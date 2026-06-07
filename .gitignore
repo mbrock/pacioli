@@ -1,0 +1,5 @@
+.agda/
+_build/
+result
+*.agdai
+

@@ -1,0 +1,4 @@
+name: pacioli
+include: src
+depend: standard-library
+
