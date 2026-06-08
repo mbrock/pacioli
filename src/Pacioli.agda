@@ -252,6 +252,9 @@ module Pacioli
   polarize-hom 0ℙ x y = ≈ᵀ-refl
   polarize-hom 1ℙ x y = ≈ᵀ-refl
 
+  polarize-credit : ∀ x → polarize 1ℙ x ≈ᵀ (polarize 0ℙ x) ⁻¹ᵀ
+  polarize-credit x = ≈ᵀ-refl
+
   ----------------------------------------------------------------------
   -- Assembling the abelian group.
   --
@@ -777,19 +780,29 @@ module RingBuffer (N : ℕ) where
       (cong (λ x → h ℕ.+ x) (+-oneʳ t))
       (cong (λ x → x ℕ.+ ℕ.suc t) (≡-sym (ℕ.+-identityʳ h)))
 
+  readingBalanceSheet : ∀ s → Safe s → occupancyReading s ℕ.+ freeReading s ≡ N
+  readingBalanceSheet s ok = ≡-trans
+    (cong₂ ℕ._+_ (≡-sym (Occupancy≡reading s)) (≡-sym (Free≡reading s)))
+    rawBalance
+    where
+    rawBalance : Occupancy s ℕ.+ Free s ≡ N
+    rawBalance =
+      let h = head s
+          t = tail s
+          o = Occupancy s
+          o≤N = ℕ.m≤n+o⇒m∸n≤o h t (noOverflow ok)
+          t+o≡h = ≡-trans (ℕ.+-comm t o) (ℕ.m∸n+n≡m (noUnderflow ok))
+          free≡N∸o = ≡-trans
+            (cong (λ x → (t ℕ.+ N) ℕ.∸ x) (≡-sym t+o≡h))
+            (ℕ.[m+n]∸[m+o]≡n∸o t N o)
+      in ≡-trans
+        (cong (λ x → o ℕ.+ x) free≡N∸o)
+        (ℕ.m+[n∸m]≡n o≤N)
+
   balanceSheet : ∀ s → Safe s → Occupancy s ℕ.+ Free s ≡ N
-  balanceSheet s ok =
-    let h = head s
-        t = tail s
-        o = Occupancy s
-        o≤N = ℕ.m≤n+o⇒m∸n≤o h t (noOverflow ok)
-        t+o≡h = ≡-trans (ℕ.+-comm t o) (ℕ.m∸n+n≡m (noUnderflow ok))
-        free≡N∸o = ≡-trans
-          (cong (λ x → (t ℕ.+ N) ℕ.∸ x) (≡-sym t+o≡h))
-          (ℕ.[m+n]∸[m+o]≡n∸o t N o)
-    in ≡-trans
-      (cong (λ x → o ℕ.+ x) free≡N∸o)
-      (ℕ.m+[n∸m]≡n o≤N)
+  balanceSheet s ok = ≡-trans
+    (cong₂ ℕ._+_ (Occupancy≡reading s) (Free≡reading s))
+    (readingBalanceSheet s ok)
 
   ----------------------------------------------------------------------
   -- Verified layer: the same guard propositions drive the typed API.
