@@ -49,10 +49,9 @@ import Data.Nat.Properties as ℕ
 import Data.Vec.Base as Vec
 open import Data.Vec.Base using (Vec; []; _∷_)
 import Data.Vec.Properties as Vecₚ
+open import Data.Vec.Functional as V using (Vector; replicate)
 open import Data.Fin.Base using (Fin; zero; suc)
-import Data.List.Base as List
-open import Data.List.Base using (List; []; _∷_; _++_)
-open import Data.Product.Base using (_×_; _,_; proj₁; proj₂; Σ-syntax)
+open import Data.Product.Base using (_,_; Σ-syntax)
 
 private
   variable
@@ -320,18 +319,23 @@ module NonNegativeVectors (m : ℕ) where
   +-cancelˡ = +-cancelˡ′
 
 ------------------------------------------------------------------------
--- Accounting: ledgers, journals, transactions and the trial balance
+-- Accounting: rows, the trial balance, and balanced transactions
 --
--- Now the bookkeeping vocabulary lines up with the algebra:
---   * a ledger / equation       = a list of T-accounts summing to εᵀ
---   * a transaction             = a balanced list of T-accounts
---   * the trial balance         = the proof that a list sums to εᵀ
---   * posting journal to ledger = appending lists (and the sums add)
+-- The bookkeeping vocabulary lines up with the algebra:
+--   * a row / journal entry / ledger = one T-account per named account,
+--     i.e. an element of the n-fold product of the Pacioli group
+--   * the trial balance              = the group sum of a row (stdlib's
+--                                      finite summation over a monoid)
+--   * a balanced row / transaction   = a row whose trial balance is εᵀ
+--
+-- The balanced rows are exactly the kernel of the trial balance, and the
+-- kernel of a group homomorphism is a subgroup. So "the initial ledger
+-- balances" and "posting a balanced row keeps it balanced" are not
+-- invariants we maintain -- they are closure of that subgroup, free.
 
 module Accounting (m n : ℕ) where
 
   open NonNegativeVectors m using (Amounts; +-cancelˡ)
-    renaming (_+_ to _+ᴬ_)
   open CommutativeMonoid Amounts using () renaming (ε to 𝟘)
 
   Amount : Set
@@ -345,78 +349,115 @@ module Accounting (m n : ℕ) where
     renaming (Carrier to T; _≈_ to _≈ᵀ_; _∙_ to _∙ᵀ_; ε to εᵀ; _⁻¹ to _⁻¹ᵀ)
   open import Relation.Binary.Reasoning.Setoid setoid
 
-  -- n named accounts (Assets, Liabilities, Equity, ...), each carrying a
-  -- T-account value.
-  Posting : Set
-  Posting = Fin n × T
+  -- Finite summation over the Pacioli group -- the trial balance -- and
+  -- its distributivity over account-wise addition, both straight from
+  -- the standard library's summation-over-a-(commutative-)monoid.
+  open import Algebra.Properties.CommutativeMonoid.Sum commutativeMonoid
+    using (sum; ∑-distrib-+)
+  open import Algebra.Properties.AbelianGroup P.PacioliGroup
+    using (⁻¹-∙-comm; ε⁻¹≈ε)
 
-  RawTx : Set
-  RawTx = List Posting
+  -- A row assigns a T-account to each of the n named accounts. This is
+  -- the n-fold product of the Pacioli group: itself an abelian group,
+  -- added account-by-account.
+  Row : Set
+  Row = Vector T n
 
-  -- The sum of a list of postings' T-accounts. This single fold is
-  -- "take the trial balance".
-  total : RawTx → T
-  total = List.foldr (λ p acc → proj₂ p ∙ᵀ acc) εᵀ
+  infixl 6 _∙ᴿ_
+  _∙ᴿ_ : Row → Row → Row
+  (f ∙ᴿ g) i = f i ∙ᵀ g i
 
-  -- A list balances when its postings sum to the zero-account. This is
-  -- exactly the double-entry principle / a valid trial balance.
-  Balanced : RawTx → Set
-  Balanced raw = total raw ≈ᵀ εᵀ
+  -- The trial balance of a row: sum its T-accounts in the Pacioli group.
+  total : Row → T
+  total f = sum f
 
-  -- A transaction is a list of postings together with a proof it
-  -- balances.
+  -- A row balances when its trial balance is the zero-account -- the
+  -- double-entry principle. The balanced rows are exactly ker total.
+  Balanced : Row → Set
+  Balanced f = total f ≈ᵀ εᵀ
+
   Tx : Set
-  Tx = Σ[ raw ∈ RawTx ] Balanced raw
+  Tx = Σ[ f ∈ Row ] Balanced f
 
-  postings : Tx → RawTx
-  postings = proj₁
+  ----------------------------------------------------------------------
+  -- ker total is a subgroup: it contains the zero row and is closed
+  -- under account-wise addition. So the initial ledger balances and
+  -- posting stays balanced -- closure, not per-post bookkeeping.
 
-  -- The empty transaction balances trivially (εᵀ ≈ᵀ εᵀ).
+  -- The trial balance of the all-zero row is εᵀ (a sum of zeroes). The
+  -- size is explicit because `replicate` discards it, so leaving it
+  -- implicit would strand `sum`'s size as an unsolved metavariable.
+  total-ε : ∀ k → sum {k} (replicate k εᵀ) ≈ᵀ εᵀ
+  total-ε ℕ.zero    = refl
+  total-ε (ℕ.suc k) = trans (identityˡ _) (total-ε k)
+
+  -- The empty / initial ledger: every account at the zero-account.
   empty : Tx
-  empty = [] , P.≈ᵀ-refl {εᵀ}
+  empty = replicate n εᵀ , total-ε n
 
-  -- total is a monoid homomorphism from list-append to ∙ᵀ. This is the
-  -- algebra of "posting the journal to the ledger": the running total of
-  -- a concatenation is the ∙ᵀ of the totals.
-  total-++ : ∀ xs ys → total (xs ++ ys) ≈ᵀ (total xs ∙ᵀ total ys)
-  total-++ []       ys = sym (identityˡ (total ys))
-  total-++ (p ∷ xs) ys = begin
-    proj₂ p ∙ᵀ total (xs ++ ys)        ≈⟨ ∙-congˡ (total-++ xs ys) ⟩
-    proj₂ p ∙ᵀ (total xs ∙ᵀ total ys)  ≈⟨ assoc (proj₂ p) (total xs) (total ys) ⟨
-    (proj₂ p ∙ᵀ total xs) ∙ᵀ total ys  ∎
-
-  -- Posting one balanced transaction onto another stays balanced:
-  -- ledger + journal = ledger. The proof is "zero ∙ᵀ zero is zero".
+  -- Posting two balanced rows: add account-wise. Balance is preserved by
+  -- ∑-distrib-+ (total is a homomorphism) -- "zero ∙ᵀ zero is zero".
   post : Tx → Tx → Tx
-  post (xs , bx) (ys , by) = (xs ++ ys) , (begin
-    total (xs ++ ys)       ≈⟨ total-++ xs ys ⟩
-    total xs ∙ᵀ total ys   ≈⟨ ∙-cong bx by ⟩
-    εᵀ ∙ᵀ εᵀ               ≈⟨ identityˡ εᵀ ⟩
-    εᵀ                     ∎)
+  post (f , bf) (g , bg) = (f ∙ᴿ g) , (begin
+    total (f ∙ᴿ g)      ≈⟨ ∑-distrib-+ f g ⟩
+    total f ∙ᵀ total g  ≈⟨ ∙-cong bf bg ⟩
+    εᵀ ∙ᵀ εᵀ            ≈⟨ identityˡ εᵀ ⟩
+    εᵀ                  ∎)
+
+  ----------------------------------------------------------------------
+  -- A single posting: the row that is the T-account `v` at account `i`
+  -- and the zero-account everywhere else. Its trial balance is just `v`.
+
+  δ : ∀ {k} → Fin k → T → Vector T k
+  δ zero    v = v V.∷ replicate _ εᵀ
+  δ (suc i) v = εᵀ V.∷ δ i v
+
+  total-δ : ∀ {k} (i : Fin k) v → sum (δ i v) ≈ᵀ v
+  total-δ {ℕ.suc k} zero    v = trans (∙-congˡ (total-ε k)) (identityʳ v)
+  total-δ           (suc i) v = trans (identityˡ _) (total-δ i v)
 
   ----------------------------------------------------------------------
   -- The fundamental transaction: move an amount between two accounts by
-  -- debiting one and crediting the other.
-  --
-  -- This debits `a` to debitAcct (posting [ a // 𝟘 ]) and credits `a`
-  -- to creditAcct (posting [ 𝟘 // a ]). Those two postings are *inverse*
-  -- T-accounts, which is why the transaction balances -- the double-
-  -- entry principle "equal debits and credits" is literally x ∙ᵀ x⁻¹ᵀ.
+  -- debiting one and crediting the other. The debit posting [ a // 𝟘 ]
+  -- and the credit posting [ 𝟘 // a ] are *inverse* T-accounts, so the
+  -- row balances: the double-entry principle is literally x ∙ᵀ x⁻¹ᵀ.
 
-  swapRaw : Amount → Fin n → Fin n → RawTx
-  swapRaw a debitAcct creditAcct =
-    (debitAcct  , a // 𝟘) ∷
-    (creditAcct , 𝟘 // a) ∷
-    []
+  swapRow : Amount → Fin n → Fin n → Row
+  swapRow a debitAcct creditAcct =
+    δ debitAcct (a // 𝟘) ∙ᴿ δ creditAcct (𝟘 // a)
 
-  swapBalanced : ∀ a d c → Balanced (swapRaw a d c)
+  swapBalanced : ∀ a d c → Balanced (swapRow a d c)
   swapBalanced a d c = begin
-    (a // 𝟘) ∙ᵀ ((𝟘 // a) ∙ᵀ εᵀ)  ≈⟨ ∙-congˡ (identityʳ (𝟘 // a)) ⟩
-    (a // 𝟘) ∙ᵀ (𝟘 // a)           ≈⟨ inverseʳ (a // 𝟘) ⟩
-    εᵀ                              ∎
+    total (δ d (a // 𝟘) ∙ᴿ δ c (𝟘 // a))         ≈⟨ ∑-distrib-+ (δ d (a // 𝟘)) (δ c (𝟘 // a)) ⟩
+    total (δ d (a // 𝟘)) ∙ᵀ total (δ c (𝟘 // a))  ≈⟨ ∙-cong (total-δ d (a // 𝟘)) (total-δ c (𝟘 // a)) ⟩
+    (a // 𝟘) ∙ᵀ (𝟘 // a)                          ≈⟨ inverseʳ (a // 𝟘) ⟩
+    εᵀ                                             ∎
 
   swap : Amount → Fin n → Fin n → Tx
-  swap a d c = swapRaw a d c , swapBalanced a d c
+  swap a d c = swapRow a d c , swapBalanced a d c
+
+  ----------------------------------------------------------------------
+  -- Reversing a transaction: negate every account. This needs that the
+  -- trial balance commutes with inversion -- total is a *group* homo,
+  -- not merely a monoid one -- which is what upgrades ker total from
+  -- "closed under ∙ᴿ" to a genuine subgroup.
+
+  total-⁻¹ : ∀ {k} (f : Vector T k) → sum (λ i → f i ⁻¹ᵀ) ≈ᵀ (sum f) ⁻¹ᵀ
+  total-⁻¹ {ℕ.zero}  f = sym ε⁻¹≈ε
+  total-⁻¹ {ℕ.suc k} f =
+    trans (∙-congˡ (total-⁻¹ (V.tail f)))
+          (⁻¹-∙-comm (V.head f) (sum (V.tail f)))
+
+  infix 8 _⁻¹ᴿ
+  _⁻¹ᴿ : Row → Row
+  (f ⁻¹ᴿ) i = f i ⁻¹ᵀ
+
+  reverse : Tx → Tx
+  reverse (f , bf) = (f ⁻¹ᴿ) , (begin
+    total (f ⁻¹ᴿ)  ≈⟨ total-⁻¹ f ⟩
+    (total f) ⁻¹ᵀ  ≈⟨ ⁻¹-cong bf ⟩
+    εᵀ ⁻¹ᵀ         ≈⟨ ε⁻¹≈ε ⟩
+    εᵀ             ∎)
 
 ------------------------------------------------------------------------
 -- A worked example
