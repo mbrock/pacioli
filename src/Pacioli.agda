@@ -8,20 +8,17 @@ open import Algebra.Core using (Op₁; Op₂)
 open import Algebra.Bundles using (AbelianGroup; CommutativeMonoid; Monoid)
 open import Algebra.Structures using (IsAbelianGroup; IsCommutativeMonoid)
 import Algebra.Solver.CommutativeMonoid as CMS
-import Algebra.Construct.Pointwise as Pointwise
 import Data.Nat.Base as Nat
 open import Data.Nat.Base using (ℕ; zero)
 import Data.Nat.Properties as ℕP
-open import Data.Nat.Solver using (module +-*-Solver)
 open import Data.Fin.Base using (Fin; zero; suc)
-import Data.Fin.Properties as FinP
-open import Data.Bool.Base using (if_then_else_)
-open import Data.Product.Base using (_×_; _,_; proj₂)
+import Data.List.Base as List
+open import Data.Product.Base using (_×_; _,_; proj₁; proj₂; Σ-syntax)
 import Data.Vec.Base as Vec
-open import Data.Vec.Base using ([]; _∷_; tabulate)
-open import Relation.Nullary.Decidable.Core using (does)
+import Data.Vec.Properties as VecP
+open import Data.Vec.Base using ([]; _∷_)
 open import Relation.Binary.Core using (Rel)
-open import Relation.Binary.PropositionalEquality.Core using (_≡_; refl)
+open import Relation.Binary.PropositionalEquality.Core using (_≡_; refl; sym; trans; cong; cong₂)
 open import Relation.Binary.Structures using (IsEquivalence)
 
 private
@@ -239,74 +236,119 @@ module Pacioli (M : CancellativeCommutativeMonoid ℓₐ ℓᵣ) where
     ; isAbelianGroup = isPacioliGroup
     }
 
-natPointwise : ℕ → CancellativeCommutativeMonoid 0ℓ 0ℓ
-natPointwise m = record
-  { Carrier = Fin m → ℕ
-  ; _≈_ = λ x y → ∀ i → x i ≡ y i
-  ; _∙_ = λ x y i → x i Nat.+ y i
-  ; ε = λ _ → zero
-  ; isCommutativeMonoid =
-      CommutativeMonoid.isCommutativeMonoid
-        (Pointwise.commutativeMonoid (Fin m) ℕP.+-0-commutativeMonoid)
-  ; cancel =
-      ( (λ x y z eq i → ℕP.+-cancelˡ-≡ (x i) (y i) (z i) (eq i))
-      , (λ x y z eq i → ℕP.+-cancelʳ-≡ (x i) (y i) (z i) (eq i))
-      )
+vec+ : ∀ {m} → Vec.Vec ℕ m → Vec.Vec ℕ m → Vec.Vec ℕ m
+vec+ = Vec.zipWith Nat._+_
+
+vecCancelˡ : ∀ {m} → Definitions.LeftCancellative (_≡_ {A = Vec.Vec ℕ m}) vec+
+vecCancelˡ [] [] [] _ = refl
+vecCancelˡ (x ∷ xs) (y ∷ ys) (z ∷ zs) eq =
+  cong₂ _∷_
+    (ℕP.+-cancelˡ-≡ x y z (cong Vec.head eq))
+    (vecCancelˡ xs ys zs (cong Vec.tail eq))
+
+vecCancelʳ : ∀ {m} → Definitions.RightCancellative (_≡_ {A = Vec.Vec ℕ m}) vec+
+vecCancelʳ [] [] [] _ = refl
+vecCancelʳ (x ∷ xs) (y ∷ ys) (z ∷ zs) eq =
+  cong₂ _∷_
+    (ℕP.+-cancelʳ-≡ x y z (cong Vec.head eq))
+    (vecCancelʳ xs ys zs (cong Vec.tail eq))
+
+natVec : ℕ → CancellativeCommutativeMonoid 0ℓ 0ℓ
+natVec m = record
+  { Carrier = Vec.Vec ℕ m
+  ; _≈_ = _≡_
+  ; _∙_ = vec+
+  ; ε = Vec.replicate m Nat.zero
+  ; isCommutativeMonoid = record
+      { isMonoid = record
+        { isSemigroup = record
+          { isMagma = record
+            { isEquivalence = record
+              { refl = refl
+              ; sym = sym
+              ; trans = trans
+              }
+            ; ∙-cong = cong₂ vec+
+            }
+          ; assoc = VecP.zipWith-assoc ℕP.+-assoc
+          }
+        ; identity =
+            ( VecP.zipWith-identityˡ ℕP.+-identityˡ
+            , VecP.zipWith-identityʳ ℕP.+-identityʳ
+            )
+        }
+      ; comm = VecP.zipWith-comm ℕP.+-comm
+      }
+  ; cancel = vecCancelˡ , vecCancelʳ
   }
 
 module Accounting (m n : ℕ) where
 
   Amount : Set
-  Amount = Fin m → ℕ
+  Amount = Vec.Vec ℕ m
 
   basis : Vec.Vec ℕ m → Amount
-  basis = Vec.lookup
+  basis x = x
 
   infixl 6 _+_
   _+_ : Amount → Amount → Amount
-  (x + y) i = x i Nat.+ y i
+  _+_ = vec+
 
   infixl 7 _*_
   _*_ : ℕ → Amount → Amount
-  (k * x) i = k Nat.* x i
+  k * x = Vec.map (λ y → k Nat.* y) x
 
   Amounts : CancellativeCommutativeMonoid 0ℓ 0ℓ
-  Amounts = natPointwise m
+  Amounts = natVec m
 
   module P = Pacioli Amounts
 
   T : Set
   T = AbelianGroup.Carrier P.PacioliGroup
 
+  module S = CMS (CancellativeCommutativeMonoid.commutativeMonoid Amounts)
+
   zeroAmount : Amount
-  zeroAmount _ = 0
+  zeroAmount = Vec.replicate m Nat.zero
 
-  Zero : T → Set
-  Zero (d // c) = ∀ i → d i ≡ c i
+  Posting : Set
+  Posting = Fin n × T
 
-  infixl 5 _<>_
+  RawTx : Set
+  RawTx = List.List Posting
 
-  data Tx : Set where
-    empty : Tx
-    swap  : Amount → Fin n → Fin n → Tx
-    _<>_  : Tx → Tx → Tx
+  total : RawTx → T
+  total = List.foldr (λ posting acc → proj₂ posting P.∙ᵀ acc) P.εᵀ
 
-  raw : Tx → Fin n → T
-  raw empty _ = zeroAmount // zeroAmount
-  raw (swap a d c) account =
-    (if does (account FinP.≟ d) then a else zeroAmount) //
-    (if does (account FinP.≟ c) then a else zeroAmount)
-  raw (left <> right) account = raw left account P.∙ᵀ raw right account
+  Balanced : RawTx → Set
+  Balanced raw = total raw P.≈ᵀ P.εᵀ
 
-  sum : Tx → T
-  sum empty = zeroAmount // zeroAmount
-  sum (swap a _ _) = a // a
-  sum (left <> right) = sum left P.∙ᵀ sum right
+  Tx : Set
+  Tx = Σ[ raw ∈ RawTx ] Balanced raw
 
-  balanced : (tx : Tx) → Zero (sum tx)
-  balanced empty _ = refl
-  balanced (swap a _ _) _ = refl
-  balanced (left <> right) i rewrite balanced left i | balanced right i = refl
+  postings : Tx → RawTx
+  postings = proj₁
+
+  empty : Tx
+  empty = List.[] , refl
+
+  swapRaw : Amount → Fin n → Fin n → RawTx
+  swapRaw a debitAccount creditAccount =
+    (debitAccount , a // zeroAmount) List.∷
+    (creditAccount , zeroAmount // a) List.∷
+    List.[]
+
+  swapBalanced : ∀ a debitAccount creditAccount → Balanced (swapRaw a debitAccount creditAccount)
+  swapBalanced a _ _ = let open S; _∙_ = _⊕_ in
+    prove 1
+      ((var zero ∙ (id ∙ id)) ∙ id)
+      (id ∙ (id ∙ (var zero ∙ id)))
+      (a ∷ [])
+
+  swap : Amount → Fin n → Fin n → Tx
+  swap a debitAccount creditAccount =
+    swapRaw a debitAccount creditAccount ,
+    swapBalanced a debitAccount creditAccount
 
 module ExampleSystem where
 
