@@ -507,6 +507,56 @@ module ScalarIntegerReading where
     ; ⁻¹-homo = toℤ-inverse
     }
 
+  fromℤ : ℤ.ℤ → T
+  fromℤ (ℤ.+ n)      = n // 0
+  fromℤ ℤ.-[1+ n ] = 0 // ℕ.suc n
+
+  toℤ-fromℤ : ∀ i → toℤ (fromℤ i) ≡ i
+  toℤ-fromℤ (ℤ.+ n)      = toℤ-⊖ n 0
+  toℤ-fromℤ ℤ.-[1+ n ] = toℤ-⊖ 0 (ℕ.suc n)
+
+  integer-diff-crossˡ : ∀ i j l → (i ℤ.- j) ℤ.+ (j ℤ.+ l) ≡ i ℤ.+ l
+  integer-diff-crossˡ = ℤRing.solve-∀
+
+  integer-diff-crossʳ : ∀ k l j → (k ℤ.- l) ℤ.+ (j ℤ.+ l) ≡ k ℤ.+ j
+  integer-diff-crossʳ = ℤRing.solve-∀
+
+  integer-diff-cross : ∀ i j k l →
+    i ℤ.- j ≡ k ℤ.- l → i ℤ.+ l ≡ k ℤ.+ j
+  integer-diff-cross i j k l p = ≡-trans
+    (≡-sym (integer-diff-crossˡ i j l))
+    (≡-trans
+      (cong (λ x → x ℤ.+ (j ℤ.+ l)) p)
+      (integer-diff-crossʳ k l j))
+
+  nat-diff-cross : ∀ a b c d →
+    (ℤ.+ a) ℤ.- (ℤ.+ b) ≡ (ℤ.+ c) ℤ.- (ℤ.+ d) →
+    a ℕ.+ d ≡ c ℕ.+ b
+  nat-diff-cross a b c d p = ℤ.+-injective (≡-trans
+    (ℤ.pos-+ a d)
+    (≡-trans
+      (integer-diff-cross (ℤ.+ a) (ℤ.+ b) (ℤ.+ c) (ℤ.+ d) p)
+      (≡-sym (ℤ.pos-+ c b))))
+
+  toℤ-injective : ∀ x y → toℤ x ≡ toℤ y → x P.≈ᵀ y
+  toℤ-injective (a // b) (c // d) p = nat-diff-cross a b c d (≡-trans
+    (≡-sym (toℤ-diff a b))
+    (≡-trans p (toℤ-diff c d)))
+
+  toℤ-surjective : ∀ i → Σ[ x ∈ T ] (∀ {z} → z P.≈ᵀ x → toℤ z ≡ i)
+  toℤ-surjective i = fromℤ i , λ {z} z≈fromℤᵢ → ≡-trans
+    (toℤ-cong z (fromℤ i) z≈fromℤᵢ)
+    (toℤ-fromℤ i)
+
+  isToℤGroupIsomorphism : ToℤGroup.IsGroupIsomorphism toℤ
+  isToℤGroupIsomorphism = record
+    { isGroupMonomorphism = record
+      { isGroupHomomorphism = isToℤGroupHomomorphism
+      ; injective = λ {x} {y} → toℤ-injective x y
+      }
+    ; surjective = toℤ-surjective
+    }
+
 ------------------------------------------------------------------------
 -- The non-negative n-vectors as a cancellative commutative monoid
 --
