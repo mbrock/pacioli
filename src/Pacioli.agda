@@ -32,7 +32,8 @@
 
 module Pacioli where
 
-open import Level using (Level; 0ℓ)
+import Level as Level
+open import Level using (Level; 0ℓ; _⊔_)
 open import Algebra.Core using (Op₁; Op₂)
 open import Algebra.Bundles using (CommutativeMonoid; AbelianGroup; Group)
 open import Algebra.Structures using (IsAbelianGroup)
@@ -48,6 +49,9 @@ open import Relation.Binary.PropositionalEquality.Core
 import Data.Nat.Base as ℕ
 open import Data.Nat.Base using (ℕ)
 import Data.Nat.Properties as ℕ
+import Data.Parity.Base as ℙ
+open import Data.Parity.Base using (Parity; 0ℙ; 1ℙ)
+open import Data.Sum.Base using (inj₁; inj₂)
 import Data.Vec.Base as Vec
 open import Data.Vec.Base using (Vec; []; _∷_)
 import Data.Vec.Properties as Vecₚ
@@ -57,7 +61,7 @@ open import Data.Product.Base using (_,_; proj₁; Σ-syntax)
 
 private
   variable
-    c ℓ : Level
+    c ℓ ℓ≤ : Level
 
 ------------------------------------------------------------------------
 -- T-accounts
@@ -129,6 +133,13 @@ module Pacioli
   -- "credit" the undo of a "debit".
   _⁻¹ᵀ : Op₁ (DebitCredit Carrier)
   (a // b) ⁻¹ᵀ = b // a
+
+  -- Polarity is the abstract debit/credit reading symmetry. Debit
+  -- polarity leaves an account alone; credit polarity swaps the two
+  -- sides, i.e. applies the group inverse.
+  polarize : Parity → Op₁ (DebitCredit Carrier)
+  polarize 0ℙ x = x
+  polarize 1ℙ x = x ⁻¹ᵀ
 
   ----------------------------------------------------------------------
   -- The cross-sum relation is an equivalence.
@@ -226,6 +237,22 @@ module Pacioli
   ∙ᵀ-comm (a // b) (c // d) = ∙-cong (comm a c) (comm d b)
 
   ----------------------------------------------------------------------
+  -- Polarity acts on T-accounts by the two-element group.
+
+  polarize-involutive : ∀ p x → polarize p (polarize p x) ≈ᵀ x
+  polarize-involutive 0ℙ x        = ≈ᵀ-refl
+  polarize-involutive 1ℙ (a // b) = ≈ᵀ-refl
+
+  polarize-action : ∀ p q x → polarize (p ℙ.+ q) x ≈ᵀ polarize p (polarize q x)
+  polarize-action 0ℙ q x        = ≈ᵀ-refl
+  polarize-action 1ℙ 0ℙ x      = ≈ᵀ-refl
+  polarize-action 1ℙ 1ℙ (a // b) = ≈ᵀ-refl
+
+  polarize-hom : ∀ p x y → polarize p (x ∙ᵀ y) ≈ᵀ (polarize p x ∙ᵀ polarize p y)
+  polarize-hom 0ℙ x y = ≈ᵀ-refl
+  polarize-hom 1ℙ x y = ≈ᵀ-refl
+
+  ----------------------------------------------------------------------
   -- Assembling the abelian group.
   --
   -- This is the canonical stdlib shape: a tower of records whose leaves
@@ -260,6 +287,116 @@ module Pacioli
     ; _⁻¹ = _⁻¹ᵀ
     ; isAbelianGroup = isPacioliGroup
     }
+
+------------------------------------------------------------------------
+-- Reduced representatives require more structure
+--
+-- The abstract Pacioli construction only needs cancellation. A canonical
+-- reduced T-account needs a way to find a common part (meet) and remove
+-- a proven subamount (difference). This tier captures exactly that
+-- extra structure without baking it into the group completion.
+
+record MeetDifferenceMonoid c ℓ ℓ≤ : Set (Level.suc (c ⊔ ℓ ⊔ ℓ≤)) where
+  infix  4 _≤_
+  infixl 6 _∸_
+  infixl 7 _⊓_
+
+  field
+    Amounts : CommutativeMonoid c ℓ
+
+  open CommutativeMonoid Amounts public
+
+  field
+    ∙-cancelˡ : Def.LeftCancellative _≈_ _∙_
+    _≤_       : Rel Carrier ℓ≤
+    _⊓_       : Op₂ Carrier
+    _∸_       : Op₂ Carrier
+
+    ⊓≤ˡ : ∀ a b → (a ⊓ b) ≤ a
+    ⊓≤ʳ : ∀ a b → (a ⊓ b) ≤ b
+
+    -- Removing a subamount and adding it back recovers the original.
+    ∸-sound : ∀ {a k} → k ≤ a → (a ∸ k) ∙ k ≈ a
+
+    -- After removing the meet, no common part remains.
+    ∸-meet-zero : ∀ a b → ((a ∸ (a ⊓ b)) ⊓ (b ∸ (a ⊓ b))) ≈ ε
+
+module ReducedPacioli {c ℓ ℓ≤} (MDM : MeetDifferenceMonoid c ℓ ℓ≤) where
+
+  open MeetDifferenceMonoid MDM
+  open import Relation.Binary.Reasoning.Setoid setoid
+
+  module P = Pacioli Amounts ∙-cancelˡ
+
+  T : Set c
+  T = DebitCredit Carrier
+
+  common : T → Carrier
+  common (a // b) = a ⊓ b
+
+  reduce : T → T
+  reduce (a // b) =
+    let k = a ⊓ b in
+    (a ∸ k) // (b ∸ k)
+
+  polarizedReduce : Parity → T → T
+  polarizedReduce p x = reduce (P.polarize p x)
+
+  polarizedReading : Parity → T → Carrier
+  polarizedReading p x = debit (polarizedReduce p x)
+
+  reduced-disjoint : ∀ x → (debit (reduce x) ⊓ credit (reduce x)) ≈ ε
+  reduced-disjoint (a // b) = ∸-meet-zero a b
+
+  polarizedReduce-disjoint : ∀ p x → (debit (polarizedReduce p x) ⊓ credit (polarizedReduce p x)) ≈ ε
+  polarizedReduce-disjoint p x = reduced-disjoint (P.polarize p x)
+
+  reduce-preserves : ∀ x → reduce x P.≈ᵀ x
+  reduce-preserves (a // b) =
+    let k = a ⊓ b
+        a′ = a ∸ k
+        b′ = b ∸ k
+    in begin
+      a′ ∙ b        ≈⟨ ∙-congˡ (sym (∸-sound (⊓≤ʳ a b))) ⟩
+      a′ ∙ (b′ ∙ k) ≈⟨ ∙-congˡ (comm b′ k) ⟩
+      a′ ∙ (k ∙ b′) ≈⟨ assoc a′ k b′ ⟨
+      (a′ ∙ k) ∙ b′ ≈⟨ ∙-congʳ (∸-sound (⊓≤ˡ a b)) ⟩
+      a ∙ b′        ∎
+
+  polarizedReduce-preserves : ∀ p x → polarizedReduce p x P.≈ᵀ P.polarize p x
+  polarizedReduce-preserves p x = reduce-preserves (P.polarize p x)
+
+private
+  ℕ-∸-⊓ : ∀ a b → a ℕ.∸ (a ℕ.⊓ b) ≡ a ℕ.∸ b
+  ℕ-∸-⊓ a b with ℕ.≤-total a b
+  ... | inj₁ a≤b
+    rewrite ℕ.m≤n⇒m⊓n≡m a≤b
+          | ℕ.n∸n≡0 a
+          | ℕ.m≤n⇒m∸n≡0 a≤b = ≡-refl
+  ... | inj₂ b≤a
+    rewrite ℕ.m≥n⇒m⊓n≡n b≤a = ≡-refl
+
+  ℕ-reduced-disjoint : ∀ a b → ((a ℕ.∸ (a ℕ.⊓ b)) ℕ.⊓ (b ℕ.∸ (a ℕ.⊓ b))) ≡ 0
+  ℕ-reduced-disjoint a b with ℕ.≤-total a b
+  ... | inj₁ a≤b
+    rewrite ℕ.m≤n⇒m⊓n≡m a≤b
+          | ℕ.n∸n≡0 a = ≡-refl
+  ... | inj₂ b≤a
+    rewrite ℕ.m≥n⇒m⊓n≡n b≤a
+          | ℕ.n∸n≡0 b = ℕ.⊓-zeroʳ (a ℕ.∸ b)
+
+ℕ-MeetDifferenceMonoid : MeetDifferenceMonoid 0ℓ 0ℓ 0ℓ
+ℕ-MeetDifferenceMonoid = record
+  { Amounts       = ℕ.+-0-commutativeMonoid
+  ; ∙-cancelˡ     = ℕ.+-cancelˡ-≡
+  ; _≤_           = ℕ._≤_
+  ; _⊓_           = ℕ._⊓_
+  ; _∸_           = ℕ._∸_
+  ; ⊓≤ˡ           = ℕ.m⊓n≤m
+  ; ⊓≤ʳ           = ℕ.m⊓n≤n
+  ; ∸-sound       = ℕ.m∸n+n≡m
+  ; ∸-meet-zero   = ℕ-reduced-disjoint
+  }
 
 ------------------------------------------------------------------------
 -- The non-negative n-vectors as a cancellative commutative monoid
@@ -584,6 +721,32 @@ module RingBuffer (N : ℕ) where
 
   account : State → T
   account s = head s // tail s
+
+  capacityAccount : State → T
+  capacityAccount s = head s // (tail s ℕ.+ N)
+
+  module R = ReducedPacioli ℕ-MeetDifferenceMonoid
+
+  reducedAccount : State → T
+  reducedAccount s = R.reduce (account s)
+
+  reducedAccountPreserves : ∀ s → reducedAccount s ≈ᵀ account s
+  reducedAccountPreserves s = R.reduce-preserves (account s)
+
+  reducedAccountDisjoint : ∀ s → (debit (reducedAccount s) ℕ.⊓ credit (reducedAccount s)) ≡ 0
+  reducedAccountDisjoint s = R.reduced-disjoint (account s)
+
+  occupancyReading : State → ℕ
+  occupancyReading s = R.polarizedReading 0ℙ (account s)
+
+  freeReading : State → ℕ
+  freeReading s = R.polarizedReading 1ℙ (capacityAccount s)
+
+  Occupancy≡reading : ∀ s → Occupancy s ≡ occupancyReading s
+  Occupancy≡reading s = ≡-sym (ℕ-∸-⊓ (head s) (tail s))
+
+  Free≡reading : ∀ s → Free s ≡ freeReading s
+  Free≡reading s = ≡-sym (ℕ-∸-⊓ (tail s ℕ.+ N) (head s))
 
   enqueuePosting : T
   enqueuePosting = 1 // 0
