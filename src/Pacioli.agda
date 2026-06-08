@@ -41,6 +41,8 @@ import Algebra.Definitions as Def
 import Algebra.Construct.Pointwise as Pointwise
 import Algebra.Construct.Sub.Group
 import Algebra.Morphism.Structures as Morphism
+import Algebra.Module.Bundles.Raw as ModuleRaw
+import Algebra.Module.Morphism.Structures as ModuleMorphism
 open import Relation.Binary.Core using (Rel)
 open import Relation.Binary.Definitions using (Reflexive; Symmetric; Transitive)
 open import Relation.Binary.Structures using (IsEquivalence)
@@ -816,6 +818,575 @@ module VectorIntegerReading (m : ℕ) where
       }
     ; ⁻¹-homo = valuation-inverse prices
     }
+
+  dot-congˡ : ∀ {n : ℕ} {prices prices′ : Vector ℤ.ℤ n} (position : Vector ℤ.ℤ n) →
+    (∀ i → prices i ≡ prices′ i) → dot prices position ≡ dot prices′ position
+  dot-congˡ {ℕ.zero}  position prices≈prices′ = ≡-refl
+  dot-congˡ {ℕ.suc n} position prices≈prices′ =
+    cong₂ ℤ._+_
+      (cong (λ x → x ℤ.* position zero) (prices≈prices′ zero))
+      (dot-congˡ (V.tail position) (λ i → prices≈prices′ (suc i)))
+
+  dot-distribˡ-step : ∀ a b c d e →
+    (a ℤ.+ b) ℤ.* c ℤ.+ (d ℤ.+ e)
+      ≡ (a ℤ.* c ℤ.+ d) ℤ.+ (b ℤ.* c ℤ.+ e)
+  dot-distribˡ-step = ℤRing.solve-∀
+
+  dot-distribˡ : ∀ {n : ℕ} (prices prices′ position : Vector ℤ.ℤ n) →
+    dot (λ i → prices i ℤ.+ prices′ i) position
+      ≡ dot prices position ℤ.+ dot prices′ position
+  dot-distribˡ {ℕ.zero}  prices prices′ position = ≡-sym (ℤ.+-identityʳ ℤ.0ℤ)
+  dot-distribˡ {ℕ.suc n} prices prices′ position = ≡-trans
+    (cong (λ x → (prices zero ℤ.+ prices′ zero) ℤ.* position zero ℤ.+ x)
+      (dot-distribˡ (V.tail prices) (V.tail prices′) (V.tail position)))
+    (dot-distribˡ-step
+      (prices zero) (prices′ zero) (position zero)
+      (dot (V.tail prices) (V.tail position))
+      (dot (V.tail prices′) (V.tail position)))
+
+  dot-zeroˡ : ∀ {n : ℕ} (position : Vector ℤ.ℤ n) →
+    dot (λ _ → ℤ.0ℤ) position ≡ ℤ.0ℤ
+  dot-zeroˡ {ℕ.zero}  position = ≡-refl
+  dot-zeroˡ {ℕ.suc n} position = ≡-trans
+    (cong₂ ℤ._+_
+      (ℤ.*-zeroˡ (position zero))
+      (dot-zeroˡ (V.tail position)))
+    (ℤ.+-identityʳ ℤ.0ℤ)
+
+  dot-negˡ-step : ∀ a b d → (ℤ.- a) ℤ.* b ℤ.+ (ℤ.- d) ≡ ℤ.- (a ℤ.* b ℤ.+ d)
+  dot-negˡ-step = ℤRing.solve-∀
+
+  dot-negˡ : ∀ {n : ℕ} (prices position : Vector ℤ.ℤ n) →
+    dot (λ i → ℤ.-_ (prices i)) position ≡ ℤ.-_ (dot prices position)
+  dot-negˡ {ℕ.zero}  prices position = ≡-refl
+  dot-negˡ {ℕ.suc n} prices position = ≡-trans
+    (cong (λ x → (ℤ.- prices zero) ℤ.* position zero ℤ.+ x)
+      (dot-negˡ (V.tail prices) (V.tail position)))
+    (dot-negˡ-step
+      (prices zero) (position zero)
+      (dot (V.tail prices) (V.tail position)))
+
+  ValuationFunctional : Set
+  ValuationFunctional = T → ℤ.ℤ
+
+  ValuationFunctionalGroup : AbelianGroup 0ℓ 0ℓ
+  ValuationFunctionalGroup = Pointwise.abelianGroup T ℤ.+-0-abelianGroup
+
+  pricesToValuation : IntVector → ValuationFunctional
+  pricesToValuation = valuation
+
+  pricesToValuation-cong :
+    ∀ prices prices′ → (∀ i → prices i ≡ prices′ i) →
+    ∀ account → pricesToValuation prices account ≡ pricesToValuation prices′ account
+  pricesToValuation-cong prices prices′ prices≈prices′ account =
+    dot-congˡ (toℤᵛ account) prices≈prices′
+
+  pricesToValuation-homo :
+    ∀ prices prices′ account →
+    pricesToValuation (λ i → prices i ℤ.+ prices′ i) account
+      ≡ pricesToValuation prices account ℤ.+ pricesToValuation prices′ account
+  pricesToValuation-homo prices prices′ account =
+    dot-distribˡ prices prices′ (toℤᵛ account)
+
+  pricesToValuation-ε :
+    ∀ account → pricesToValuation (λ _ → ℤ.0ℤ) account ≡ ℤ.0ℤ
+  pricesToValuation-ε account = dot-zeroˡ (toℤᵛ account)
+
+  pricesToValuation-inverse :
+    ∀ prices account →
+    pricesToValuation (λ i → ℤ.-_ (prices i)) account
+      ≡ ℤ.-_ (pricesToValuation prices account)
+  pricesToValuation-inverse prices account =
+    dot-negˡ prices (toℤᵛ account)
+
+  module PricesToValuationGroup = Morphism.GroupMorphisms
+    (AbelianGroup.rawGroup IntVectorGroup)
+    (AbelianGroup.rawGroup ValuationFunctionalGroup)
+
+  isPricesToValuationGroupHomomorphism :
+    PricesToValuationGroup.IsGroupHomomorphism pricesToValuation
+  isPricesToValuationGroupHomomorphism = record
+    { isMonoidHomomorphism = record
+      { isMagmaHomomorphism = record
+        { isRelHomomorphism = record
+          { cong = λ {prices} {prices′} → pricesToValuation-cong prices prices′ }
+        ; homo = pricesToValuation-homo
+        }
+      ; ε-homo = pricesToValuation-ε
+      }
+    ; ⁻¹-homo = pricesToValuation-inverse
+    }
+
+  scalePosition : ℤ.ℤ → IntVector → IntVector
+  scalePosition k position i = k ℤ.* position i
+
+  scaleAccount : ℤ.ℤ → T → T
+  scaleAccount k account = fromℤᵛ (scalePosition k (toℤᵛ account))
+
+  scaleAccount-reading : ∀ k account i →
+    toℤᵛ (scaleAccount k account) i ≡ k ℤ.* toℤᵛ account i
+  scaleAccount-reading k account i =
+    toℤᵛ-fromℤᵛ (scalePosition k (toℤᵛ account)) i
+
+  AccountRawModule : ModuleRaw.RawModule ℤ.ℤ 0ℓ 0ℓ
+  AccountRawModule = record
+    { Carrierᴹ = T
+    ; _≈ᴹ_ = P._≈ᵀ_
+    ; _+ᴹ_ = P._∙ᵀ_
+    ; _*ₗ_ = scaleAccount
+    ; _*ᵣ_ = λ account k → scaleAccount k account
+    ; 0ᴹ = P.εᵀ
+    ; -ᴹ_ = P._⁻¹ᵀ
+    }
+
+  record IntegerAction {v ℓv : Level} (A : AbelianGroup v ℓv) : Set (v ⊔ ℓv) where
+    infixl 7 _⋆_
+    open AbelianGroup A renaming
+      ( Carrier to Value ; _≈_ to _≈ᴬ_ ; _∙_ to _+ᴬ_
+      ; ε to 0ᴬ ; _⁻¹ to -ᴬ_
+      )
+    field
+      _⋆_ : ℤ.ℤ → Value → Value
+
+      ⋆-congʳ : ∀ i {x y} → x ≈ᴬ y → i ⋆ x ≈ᴬ i ⋆ y
+      ⋆-homo-+ : ∀ i j x → ((i ℤ.+ j) ⋆ x) ≈ᴬ (i ⋆ x) +ᴬ (j ⋆ x)
+      ⋆-zeroˡ : ∀ x → ℤ.0ℤ ⋆ x ≈ᴬ 0ᴬ
+      ⋆-identityˡ : ∀ x → ℤ.1ℤ ⋆ x ≈ᴬ x
+      ⋆-assoc : ∀ i j x → ((i ℤ.* j) ⋆ x) ≈ᴬ (i ⋆ (j ⋆ x))
+      ⋆-negˡ : ∀ i x → (ℤ.- i) ⋆ x ≈ᴬ -ᴬ (i ⋆ x)
+
+      ⋆-distribʳ : ∀ i x y → (i ⋆ (x +ᴬ y)) ≈ᴬ (i ⋆ x) +ᴬ (i ⋆ y)
+      ⋆-zeroʳ : ∀ i → i ⋆ 0ᴬ ≈ᴬ 0ᴬ
+      ⋆-negʳ : ∀ i x → i ⋆ (-ᴬ x) ≈ᴬ -ᴬ (i ⋆ x)
+
+  module GeneralValuation {v ℓv : Level}
+    (A : AbelianGroup v ℓv)
+    (action : IntegerAction A)
+    where
+
+    open AbelianGroup A renaming
+      ( Carrier to Value ; _≈_ to _≈ᴬ_ ; _∙_ to _+ᴬ_
+      ; ε to 0ᴬ ; _⁻¹ to -ᴬ_
+      ; ∙-cong to +ᴬ-cong ; ∙-congˡ to +ᴬ-congˡ ; ∙-congʳ to +ᴬ-congʳ
+      ; identityʳ to +ᴬ-identityʳ
+      ; assoc to +ᴬ-assoc ; comm to +ᴬ-comm
+      ; refl to reflᴬ ; sym to symᴬ ; trans to transᴬ
+      ; reflexive to reflexiveᴬ
+      )
+    open IntegerAction action
+    open import Relation.Binary.Reasoning.Setoid setoid
+    open import Algebra.Consequences.Setoid setoid
+      using (comm∧assoc⇒middleFour)
+    open import Algebra.Properties.AbelianGroup A
+      using (⁻¹-∙-comm; ε⁻¹≈ε)
+
+    ValueVector : Set v
+    ValueVector = Vector Value m
+
+    ValueVectorGroup : AbelianGroup v ℓv
+    ValueVectorGroup = Pointwise.abelianGroup (Fin m) A
+
+    ValuationᴬFunctional : Set v
+    ValuationᴬFunctional = T → Value
+
+    ValuationᴬFunctionalGroup : AbelianGroup v ℓv
+    ValuationᴬFunctionalGroup = Pointwise.abelianGroup T A
+
+    ValueRawModule : ModuleRaw.RawModule ℤ.ℤ v ℓv
+    ValueRawModule = record
+      { Carrierᴹ = Value
+      ; _≈ᴹ_ = _≈ᴬ_
+      ; _+ᴹ_ = _+ᴬ_
+      ; _*ₗ_ = λ k x → k ⋆ x
+      ; _*ᵣ_ = λ x k → k ⋆ x
+      ; 0ᴹ = 0ᴬ
+      ; -ᴹ_ = -ᴬ_
+      }
+
+    ValueVectorRawModule : ModuleRaw.RawModule ℤ.ℤ v ℓv
+    ValueVectorRawModule = record
+      { Carrierᴹ = ValueVector
+      ; _≈ᴹ_ = λ prices prices′ → ∀ i → prices i ≈ᴬ prices′ i
+      ; _+ᴹ_ = λ prices prices′ i → prices i +ᴬ prices′ i
+      ; _*ₗ_ = λ k prices i → k ⋆ prices i
+      ; _*ᵣ_ = λ prices k i → k ⋆ prices i
+      ; 0ᴹ = λ _ → 0ᴬ
+      ; -ᴹ_ = λ prices i → -ᴬ (prices i)
+      }
+
+    ValuationᴬFunctionalRawModule : ModuleRaw.RawModule ℤ.ℤ v ℓv
+    ValuationᴬFunctionalRawModule = record
+      { Carrierᴹ = ValuationᴬFunctional
+      ; _≈ᴹ_ = λ f g → ∀ account → f account ≈ᴬ g account
+      ; _+ᴹ_ = λ f g account → f account +ᴬ g account
+      ; _*ₗ_ = λ k f account → k ⋆ f account
+      ; _*ᵣ_ = λ f k account → k ⋆ f account
+      ; 0ᴹ = λ _ → 0ᴬ
+      ; -ᴹ_ = λ f account → -ᴬ (f account)
+      }
+
+    middleFourᴬ : ∀ a b c d →
+      (a +ᴬ b) +ᴬ (c +ᴬ d) ≈ᴬ (a +ᴬ c) +ᴬ (b +ᴬ d)
+    middleFourᴬ =
+      comm∧assoc⇒middleFour +ᴬ-cong +ᴬ-comm +ᴬ-assoc
+
+    dotᴬ : ∀ {n : ℕ} → Vector Value n → Vector ℤ.ℤ n → Value
+    dotᴬ {ℕ.zero}  prices position = 0ᴬ
+    dotᴬ {ℕ.suc n} prices position =
+      (position zero ⋆ prices zero) +ᴬ dotᴬ (V.tail prices) (V.tail position)
+
+    dotᴬ-congʳ : ∀ {n : ℕ} (prices : Vector Value n) {position position′ : Vector ℤ.ℤ n} →
+      (∀ i → position i ≡ position′ i) → dotᴬ prices position ≈ᴬ dotᴬ prices position′
+    dotᴬ-congʳ {ℕ.zero}  prices position≈position′ = reflᴬ
+    dotᴬ-congʳ {ℕ.suc n} prices position≈position′ =
+      +ᴬ-cong
+        (reflexiveᴬ (cong (λ q → q ⋆ prices zero) (position≈position′ zero)))
+        (dotᴬ-congʳ (V.tail prices) (λ i → position≈position′ (suc i)))
+
+    dotᴬ-distribʳ-step : ∀ i j price d e →
+      ((i ℤ.+ j) ⋆ price) +ᴬ (d +ᴬ e)
+        ≈ᴬ ((i ⋆ price) +ᴬ d) +ᴬ ((j ⋆ price) +ᴬ e)
+    dotᴬ-distribʳ-step i j price d e = begin
+      ((i ℤ.+ j) ⋆ price) +ᴬ (d +ᴬ e)
+        ≈⟨ +ᴬ-congʳ (⋆-homo-+ i j price) ⟩
+      ((i ⋆ price) +ᴬ (j ⋆ price)) +ᴬ (d +ᴬ e)
+        ≈⟨ middleFourᴬ (i ⋆ price) (j ⋆ price) d e ⟩
+      ((i ⋆ price) +ᴬ d) +ᴬ ((j ⋆ price) +ᴬ e) ∎
+
+    dotᴬ-distribʳ : ∀ {n : ℕ} (prices : Vector Value n) (position position′ : Vector ℤ.ℤ n) →
+      dotᴬ prices (λ i → position i ℤ.+ position′ i)
+        ≈ᴬ dotᴬ prices position +ᴬ dotᴬ prices position′
+    dotᴬ-distribʳ {ℕ.zero}  prices position position′ = symᴬ (+ᴬ-identityʳ 0ᴬ)
+    dotᴬ-distribʳ {ℕ.suc n} prices position position′ = begin
+      (position zero ℤ.+ position′ zero) ⋆ prices zero
+        +ᴬ dotᴬ (V.tail prices) (λ i → V.tail position i ℤ.+ V.tail position′ i)
+        ≈⟨ +ᴬ-congˡ
+             (dotᴬ-distribʳ (V.tail prices) (V.tail position) (V.tail position′)) ⟩
+      (position zero ℤ.+ position′ zero) ⋆ prices zero
+        +ᴬ (dotᴬ (V.tail prices) (V.tail position)
+          +ᴬ dotᴬ (V.tail prices) (V.tail position′))
+        ≈⟨ dotᴬ-distribʳ-step
+             (position zero) (position′ zero) (prices zero)
+             (dotᴬ (V.tail prices) (V.tail position))
+             (dotᴬ (V.tail prices) (V.tail position′)) ⟩
+      dotᴬ prices position +ᴬ dotᴬ prices position′ ∎
+
+    dotᴬ-zeroʳ : ∀ {n : ℕ} (prices : Vector Value n) →
+      dotᴬ prices (λ _ → ℤ.0ℤ) ≈ᴬ 0ᴬ
+    dotᴬ-zeroʳ {ℕ.zero}  prices = reflᴬ
+    dotᴬ-zeroʳ {ℕ.suc n} prices = begin
+      (ℤ.0ℤ ⋆ prices zero) +ᴬ dotᴬ (V.tail prices) (λ _ → ℤ.0ℤ)
+        ≈⟨ +ᴬ-cong (⋆-zeroˡ (prices zero)) (dotᴬ-zeroʳ (V.tail prices)) ⟩
+      0ᴬ +ᴬ 0ᴬ
+        ≈⟨ +ᴬ-identityʳ 0ᴬ ⟩
+      0ᴬ ∎
+
+    dotᴬ-negʳ-step : ∀ i price d →
+      ((ℤ.- i) ⋆ price) +ᴬ -ᴬ d ≈ᴬ -ᴬ ((i ⋆ price) +ᴬ d)
+    dotᴬ-negʳ-step i price d = begin
+      ((ℤ.- i) ⋆ price) +ᴬ -ᴬ d
+        ≈⟨ +ᴬ-congʳ (⋆-negˡ i price) ⟩
+      -ᴬ (i ⋆ price) +ᴬ -ᴬ d
+        ≈⟨ ⁻¹-∙-comm (i ⋆ price) d ⟩
+      -ᴬ ((i ⋆ price) +ᴬ d) ∎
+
+    dotᴬ-negʳ : ∀ {n : ℕ} (prices : Vector Value n) (position : Vector ℤ.ℤ n) →
+      dotᴬ prices (λ i → ℤ.-_ (position i)) ≈ᴬ -ᴬ (dotᴬ prices position)
+    dotᴬ-negʳ {ℕ.zero}  prices position = symᴬ ε⁻¹≈ε
+    dotᴬ-negʳ {ℕ.suc n} prices position = begin
+      ℤ.- position zero ⋆ prices zero
+        +ᴬ dotᴬ (V.tail prices) (λ i → ℤ.- V.tail position i)
+        ≈⟨ +ᴬ-congˡ (dotᴬ-negʳ (V.tail prices) (V.tail position)) ⟩
+      ℤ.- position zero ⋆ prices zero
+        +ᴬ -ᴬ dotᴬ (V.tail prices) (V.tail position)
+        ≈⟨ dotᴬ-negʳ-step
+             (position zero) (prices zero)
+             (dotᴬ (V.tail prices) (V.tail position)) ⟩
+      -ᴬ dotᴬ prices position ∎
+
+    dotᴬ-congˡ : ∀ {n : ℕ} {prices prices′ : Vector Value n} (position : Vector ℤ.ℤ n) →
+      (∀ i → prices i ≈ᴬ prices′ i) → dotᴬ prices position ≈ᴬ dotᴬ prices′ position
+    dotᴬ-congˡ {ℕ.zero}  position prices≈prices′ = reflᴬ
+    dotᴬ-congˡ {ℕ.suc n} position prices≈prices′ =
+      +ᴬ-cong
+        (⋆-congʳ (position zero) (prices≈prices′ zero))
+        (dotᴬ-congˡ (V.tail position) (λ i → prices≈prices′ (suc i)))
+
+    dotᴬ-distribˡ-step : ∀ i price price′ d e →
+      (i ⋆ (price +ᴬ price′)) +ᴬ (d +ᴬ e)
+        ≈ᴬ ((i ⋆ price) +ᴬ d) +ᴬ ((i ⋆ price′) +ᴬ e)
+    dotᴬ-distribˡ-step i price price′ d e = begin
+      (i ⋆ (price +ᴬ price′)) +ᴬ (d +ᴬ e)
+        ≈⟨ +ᴬ-congʳ (⋆-distribʳ i price price′) ⟩
+      ((i ⋆ price) +ᴬ (i ⋆ price′)) +ᴬ (d +ᴬ e)
+        ≈⟨ middleFourᴬ (i ⋆ price) (i ⋆ price′) d e ⟩
+      ((i ⋆ price) +ᴬ d) +ᴬ ((i ⋆ price′) +ᴬ e) ∎
+
+    dotᴬ-distribˡ : ∀ {n : ℕ} (prices prices′ : Vector Value n) (position : Vector ℤ.ℤ n) →
+      dotᴬ (λ i → prices i +ᴬ prices′ i) position
+        ≈ᴬ dotᴬ prices position +ᴬ dotᴬ prices′ position
+    dotᴬ-distribˡ {ℕ.zero}  prices prices′ position = symᴬ (+ᴬ-identityʳ 0ᴬ)
+    dotᴬ-distribˡ {ℕ.suc n} prices prices′ position = begin
+      position zero ⋆ (prices zero +ᴬ prices′ zero)
+        +ᴬ dotᴬ (λ i → V.tail prices i +ᴬ V.tail prices′ i) (V.tail position)
+        ≈⟨ +ᴬ-congˡ
+             (dotᴬ-distribˡ (V.tail prices) (V.tail prices′) (V.tail position)) ⟩
+      position zero ⋆ (prices zero +ᴬ prices′ zero)
+        +ᴬ (dotᴬ (V.tail prices) (V.tail position)
+          +ᴬ dotᴬ (V.tail prices′) (V.tail position))
+        ≈⟨ dotᴬ-distribˡ-step
+             (position zero) (prices zero) (prices′ zero)
+             (dotᴬ (V.tail prices) (V.tail position))
+             (dotᴬ (V.tail prices′) (V.tail position)) ⟩
+      dotᴬ prices position +ᴬ dotᴬ prices′ position ∎
+
+    dotᴬ-zeroˡ : ∀ {n : ℕ} (position : Vector ℤ.ℤ n) →
+      dotᴬ (λ _ → 0ᴬ) position ≈ᴬ 0ᴬ
+    dotᴬ-zeroˡ {ℕ.zero}  position = reflᴬ
+    dotᴬ-zeroˡ {ℕ.suc n} position = begin
+      (position zero ⋆ 0ᴬ) +ᴬ dotᴬ (λ _ → 0ᴬ) (V.tail position)
+        ≈⟨ +ᴬ-cong (⋆-zeroʳ (position zero)) (dotᴬ-zeroˡ (V.tail position)) ⟩
+      0ᴬ +ᴬ 0ᴬ
+        ≈⟨ +ᴬ-identityʳ 0ᴬ ⟩
+      0ᴬ ∎
+
+    dotᴬ-negˡ-step : ∀ i price d →
+      (i ⋆ (-ᴬ price)) +ᴬ -ᴬ d ≈ᴬ -ᴬ ((i ⋆ price) +ᴬ d)
+    dotᴬ-negˡ-step i price d = begin
+      (i ⋆ (-ᴬ price)) +ᴬ -ᴬ d
+        ≈⟨ +ᴬ-congʳ (⋆-negʳ i price) ⟩
+      -ᴬ (i ⋆ price) +ᴬ -ᴬ d
+        ≈⟨ ⁻¹-∙-comm (i ⋆ price) d ⟩
+      -ᴬ ((i ⋆ price) +ᴬ d) ∎
+
+    dotᴬ-negˡ : ∀ {n : ℕ} (prices : Vector Value n) (position : Vector ℤ.ℤ n) →
+      dotᴬ (λ i → -ᴬ (prices i)) position ≈ᴬ -ᴬ (dotᴬ prices position)
+    dotᴬ-negˡ {ℕ.zero}  prices position = symᴬ ε⁻¹≈ε
+    dotᴬ-negˡ {ℕ.suc n} prices position = begin
+      position zero ⋆ -ᴬ prices zero
+        +ᴬ dotᴬ (λ i → -ᴬ V.tail prices i) (V.tail position)
+        ≈⟨ +ᴬ-congˡ (dotᴬ-negˡ (V.tail prices) (V.tail position)) ⟩
+      position zero ⋆ -ᴬ prices zero
+        +ᴬ -ᴬ dotᴬ (V.tail prices) (V.tail position)
+        ≈⟨ dotᴬ-negˡ-step
+             (position zero) (prices zero)
+             (dotᴬ (V.tail prices) (V.tail position)) ⟩
+      -ᴬ dotᴬ prices position ∎
+
+    dotᴬ-scaleʳ : ∀ {n : ℕ} k (prices : Vector Value n) (position : Vector ℤ.ℤ n) →
+      dotᴬ prices (λ i → k ℤ.* position i) ≈ᴬ (k ⋆ dotᴬ prices position)
+    dotᴬ-scaleʳ {ℕ.zero}  k prices position = symᴬ (⋆-zeroʳ k)
+    dotᴬ-scaleʳ {ℕ.suc n} k prices position = begin
+      (k ℤ.* position zero) ⋆ prices zero
+        +ᴬ dotᴬ (V.tail prices) (λ i → k ℤ.* V.tail position i)
+        ≈⟨ +ᴬ-cong
+             (⋆-assoc k (position zero) (prices zero))
+             (dotᴬ-scaleʳ k (V.tail prices) (V.tail position)) ⟩
+      k ⋆ (position zero ⋆ prices zero)
+        +ᴬ (k ⋆ dotᴬ (V.tail prices) (V.tail position))
+        ≈⟨ symᴬ (⋆-distribʳ k (position zero ⋆ prices zero)
+             (dotᴬ (V.tail prices) (V.tail position))) ⟩
+      k ⋆ dotᴬ prices position ∎
+
+    ⋆-commute : ∀ k q price → q ⋆ (k ⋆ price) ≈ᴬ (k ⋆ (q ⋆ price))
+    ⋆-commute k q price = transᴬ
+      (symᴬ (⋆-assoc q k price))
+      (transᴬ
+        (reflexiveᴬ (cong (λ r → r ⋆ price) (ℤ.*-comm q k)))
+        (⋆-assoc k q price))
+
+    dotᴬ-scaleˡ : ∀ {n : ℕ} k (prices : Vector Value n) (position : Vector ℤ.ℤ n) →
+      dotᴬ (λ i → k ⋆ prices i) position ≈ᴬ (k ⋆ dotᴬ prices position)
+    dotᴬ-scaleˡ {ℕ.zero}  k prices position = symᴬ (⋆-zeroʳ k)
+    dotᴬ-scaleˡ {ℕ.suc n} k prices position = begin
+      position zero ⋆ (k ⋆ prices zero)
+        +ᴬ dotᴬ (λ i → k ⋆ V.tail prices i) (V.tail position)
+        ≈⟨ +ᴬ-cong
+             (⋆-commute k (position zero) (prices zero))
+             (dotᴬ-scaleˡ k (V.tail prices) (V.tail position)) ⟩
+      k ⋆ (position zero ⋆ prices zero)
+        +ᴬ (k ⋆ dotᴬ (V.tail prices) (V.tail position))
+        ≈⟨ symᴬ (⋆-distribʳ k (position zero ⋆ prices zero)
+             (dotᴬ (V.tail prices) (V.tail position))) ⟩
+      k ⋆ dotᴬ prices position ∎
+
+    valuationᴬ : ValueVector → T → Value
+    valuationᴬ prices account = dotᴬ prices (toℤᵛ account)
+
+    valuationᴬ-cong : ∀ prices x y → x P.≈ᵀ y → valuationᴬ prices x ≈ᴬ valuationᴬ prices y
+    valuationᴬ-cong prices x y x≈y = dotᴬ-congʳ prices (toℤᵛ-cong x y x≈y)
+
+    valuationᴬ-homo : ∀ prices x y →
+      valuationᴬ prices (x P.∙ᵀ y) ≈ᴬ valuationᴬ prices x +ᴬ valuationᴬ prices y
+    valuationᴬ-homo prices x y = transᴬ
+      (dotᴬ-congʳ prices (toℤᵛ-homo x y))
+      (dotᴬ-distribʳ prices (toℤᵛ x) (toℤᵛ y))
+
+    valuationᴬ-ε : ∀ prices → valuationᴬ prices P.εᵀ ≈ᴬ 0ᴬ
+    valuationᴬ-ε prices = transᴬ
+      (dotᴬ-congʳ prices toℤᵛ-ε)
+      (dotᴬ-zeroʳ prices)
+
+    valuationᴬ-inverse : ∀ prices x →
+      valuationᴬ prices (x P.⁻¹ᵀ) ≈ᴬ -ᴬ (valuationᴬ prices x)
+    valuationᴬ-inverse prices x = transᴬ
+      (dotᴬ-congʳ prices (toℤᵛ-inverse x))
+      (dotᴬ-negʳ prices (toℤᵛ x))
+
+    module ValuationᴬGroup (prices : ValueVector) = Morphism.GroupMorphisms
+      (AbelianGroup.rawGroup P.PacioliGroup)
+      (AbelianGroup.rawGroup A)
+
+    isValuationᴬGroupHomomorphism :
+      ∀ prices → ValuationᴬGroup.IsGroupHomomorphism prices (valuationᴬ prices)
+    isValuationᴬGroupHomomorphism prices = record
+      { isMonoidHomomorphism = record
+        { isMagmaHomomorphism = record
+          { isRelHomomorphism = record { cong = λ {x} {y} → valuationᴬ-cong prices x y }
+          ; homo = valuationᴬ-homo prices
+          }
+        ; ε-homo = valuationᴬ-ε prices
+        }
+      ; ⁻¹-homo = valuationᴬ-inverse prices
+      }
+
+    valuationᴬ-*ₗ-homo : ∀ prices k account →
+      valuationᴬ prices (scaleAccount k account) ≈ᴬ (k ⋆ valuationᴬ prices account)
+    valuationᴬ-*ₗ-homo prices k account = transᴬ
+      (dotᴬ-congʳ prices (scaleAccount-reading k account))
+      (dotᴬ-scaleʳ k prices (toℤᵛ account))
+
+    valuationᴬ-*ᵣ-homo : ∀ prices k account →
+      valuationᴬ prices (scaleAccount k account) ≈ᴬ (k ⋆ valuationᴬ prices account)
+    valuationᴬ-*ᵣ-homo = valuationᴬ-*ₗ-homo
+
+    module ValuationᴬModule = ModuleMorphism.ModuleMorphisms
+      AccountRawModule
+      ValueRawModule
+
+    isValuationᴬModuleHomomorphism :
+      ∀ prices → ValuationᴬModule.IsModuleHomomorphism (valuationᴬ prices)
+    isValuationᴬModuleHomomorphism prices = record
+      { isBimoduleHomomorphism = record
+        { +ᴹ-isGroupHomomorphism = isValuationᴬGroupHomomorphism prices
+        ; *ₗ-homo = valuationᴬ-*ₗ-homo prices
+        ; *ᵣ-homo = valuationᴬ-*ᵣ-homo prices
+        }
+      }
+
+    pricesToValuationᴬ : ValueVector → ValuationᴬFunctional
+    pricesToValuationᴬ = valuationᴬ
+
+    pricesToValuationᴬ-cong :
+      ∀ prices prices′ → (∀ i → prices i ≈ᴬ prices′ i) →
+      ∀ account → pricesToValuationᴬ prices account ≈ᴬ pricesToValuationᴬ prices′ account
+    pricesToValuationᴬ-cong prices prices′ prices≈prices′ account =
+      dotᴬ-congˡ (toℤᵛ account) prices≈prices′
+
+    pricesToValuationᴬ-homo :
+      ∀ prices prices′ account →
+      pricesToValuationᴬ (λ i → prices i +ᴬ prices′ i) account
+        ≈ᴬ pricesToValuationᴬ prices account +ᴬ pricesToValuationᴬ prices′ account
+    pricesToValuationᴬ-homo prices prices′ account =
+      dotᴬ-distribˡ prices prices′ (toℤᵛ account)
+
+    pricesToValuationᴬ-ε :
+      ∀ account → pricesToValuationᴬ (λ _ → 0ᴬ) account ≈ᴬ 0ᴬ
+    pricesToValuationᴬ-ε account = dotᴬ-zeroˡ (toℤᵛ account)
+
+    pricesToValuationᴬ-inverse :
+      ∀ prices account →
+      pricesToValuationᴬ (λ i → -ᴬ (prices i)) account
+        ≈ᴬ -ᴬ (pricesToValuationᴬ prices account)
+    pricesToValuationᴬ-inverse prices account =
+      dotᴬ-negˡ prices (toℤᵛ account)
+
+    module PricesToValuationᴬGroup = Morphism.GroupMorphisms
+      (AbelianGroup.rawGroup ValueVectorGroup)
+      (AbelianGroup.rawGroup ValuationᴬFunctionalGroup)
+
+    isPricesToValuationᴬGroupHomomorphism :
+      PricesToValuationᴬGroup.IsGroupHomomorphism pricesToValuationᴬ
+    isPricesToValuationᴬGroupHomomorphism = record
+      { isMonoidHomomorphism = record
+        { isMagmaHomomorphism = record
+          { isRelHomomorphism = record
+            { cong = λ {prices} {prices′} → pricesToValuationᴬ-cong prices prices′ }
+          ; homo = pricesToValuationᴬ-homo
+          }
+        ; ε-homo = pricesToValuationᴬ-ε
+        }
+      ; ⁻¹-homo = pricesToValuationᴬ-inverse
+      }
+
+    pricesToValuationᴬ-*ₗ-homo : ∀ k prices account →
+      pricesToValuationᴬ (λ i → k ⋆ prices i) account
+        ≈ᴬ (k ⋆ pricesToValuationᴬ prices account)
+    pricesToValuationᴬ-*ₗ-homo k prices account =
+      dotᴬ-scaleˡ k prices (toℤᵛ account)
+
+    pricesToValuationᴬ-*ᵣ-homo : ∀ k prices account →
+      pricesToValuationᴬ (λ i → k ⋆ prices i) account
+        ≈ᴬ (k ⋆ pricesToValuationᴬ prices account)
+    pricesToValuationᴬ-*ᵣ-homo = pricesToValuationᴬ-*ₗ-homo
+
+    module PricesToValuationᴬModule = ModuleMorphism.ModuleMorphisms
+      ValueVectorRawModule
+      ValuationᴬFunctionalRawModule
+
+    isPricesToValuationᴬModuleHomomorphism :
+      PricesToValuationᴬModule.IsModuleHomomorphism pricesToValuationᴬ
+    isPricesToValuationᴬModuleHomomorphism = record
+      { isBimoduleHomomorphism = record
+        { +ᴹ-isGroupHomomorphism = isPricesToValuationᴬGroupHomomorphism
+        ; *ₗ-homo = pricesToValuationᴬ-*ₗ-homo
+        ; *ᵣ-homo = pricesToValuationᴬ-*ᵣ-homo
+        }
+      }
+
+  ℤ⋆-homo-+ : ∀ i j x → (i ℤ.+ j) ℤ.* x ≡ i ℤ.* x ℤ.+ j ℤ.* x
+  ℤ⋆-homo-+ = ℤRing.solve-∀
+
+  ℤ⋆-assoc : ∀ i j x → (i ℤ.* j) ℤ.* x ≡ i ℤ.* (j ℤ.* x)
+  ℤ⋆-assoc = ℤ.*-assoc
+
+  ℤ⋆-negˡ : ∀ i x → (ℤ.- i) ℤ.* x ≡ ℤ.- (i ℤ.* x)
+  ℤ⋆-negˡ = ℤRing.solve-∀
+
+  ℤ⋆-distribʳ : ∀ i x y → i ℤ.* (x ℤ.+ y) ≡ i ℤ.* x ℤ.+ i ℤ.* y
+  ℤ⋆-distribʳ = ℤRing.solve-∀
+
+  ℤ⋆-negʳ : ∀ i x → i ℤ.* (ℤ.- x) ≡ ℤ.- (i ℤ.* x)
+  ℤ⋆-negʳ = ℤRing.solve-∀
+
+  ℤIntegerAction : IntegerAction ℤ.+-0-abelianGroup
+  ℤIntegerAction = record
+    { _⋆_ = ℤ._*_
+    ; ⋆-congʳ = λ i → cong (i ℤ.*_)
+    ; ⋆-homo-+ = ℤ⋆-homo-+
+    ; ⋆-zeroˡ = ℤ.*-zeroˡ
+    ; ⋆-identityˡ = ℤ.*-identityˡ
+    ; ⋆-assoc = ℤ⋆-assoc
+    ; ⋆-negˡ = ℤ⋆-negˡ
+    ; ⋆-distribʳ = ℤ⋆-distribʳ
+    ; ⋆-zeroʳ = ℤ.*-zeroʳ
+    ; ⋆-negʳ = ℤ⋆-negʳ
+    }
+
+  module ℤValuation = GeneralValuation ℤ.+-0-abelianGroup ℤIntegerAction
+
+  dotᴬ≡dot : ∀ {n : ℕ} (prices position : Vector ℤ.ℤ n) →
+    ℤValuation.dotᴬ prices position ≡ dot prices position
+  dotᴬ≡dot {ℕ.zero}  prices position = ≡-refl
+  dotᴬ≡dot {ℕ.suc n} prices position =
+    cong₂ ℤ._+_
+      (ℤ.*-comm (position zero) (prices zero))
+      (dotᴬ≡dot (V.tail prices) (V.tail position))
+
+  valuationᴬ≡valuation : ∀ prices account →
+    ℤValuation.valuationᴬ prices account ≡ valuation prices account
+  valuationᴬ≡valuation prices account =
+    dotᴬ≡dot prices (toℤᵛ account)
 
 ------------------------------------------------------------------------
 -- Accounting: rows, the trial balance, and balanced transactions
