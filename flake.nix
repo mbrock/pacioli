@@ -19,8 +19,12 @@
         system:
         let
           pkgs = import nixpkgs { inherit system; };
-          standard-library = pkgs.agdaPackages.standard-library;
-          agda = pkgs.agda.withPackages (_: [ standard-library ]);
+          # The standard library is vendored under vendor/agda-stdlib (a
+          # checkout of agda/agda-stdlib, currently v2.4), so we use the
+          # *unwrapped* Agda compiler (the wrapped pkgs.agda pins its own
+          # --library-file to an empty nixpkgs set, ignoring AGDA_DIR) and
+          # point a libraries file at the vendored source.
+          agda = pkgs.agda.unwrapped or pkgs.haskellPackages.Agda;
         in
         {
           default = pkgs.mkShell {
@@ -28,8 +32,12 @@
 
             shellHook = ''
               mkdir -p .agda
-              printf '%s\n%s\n' "$PWD/pacioli.agda-lib" "${standard-library}/standard-library.agda-lib" > .agda/libraries
-              printf '%s\n' pacioli > .agda/defaults
+              export AGDA_DIR="$PWD/.agda"
+              printf '%s\n%s\n' \
+                "$PWD/pacioli.agda-lib" \
+                "$PWD/vendor/agda-stdlib/standard-library.agda-lib" \
+                > "$AGDA_DIR/libraries"
+              printf '%s\n' pacioli > "$AGDA_DIR/defaults"
             '';
           };
         }

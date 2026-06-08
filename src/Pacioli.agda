@@ -34,9 +34,11 @@ module Pacioli where
 
 open import Level using (Level; 0ℓ)
 open import Algebra.Core using (Op₁; Op₂)
-open import Algebra.Bundles using (CommutativeMonoid; AbelianGroup)
+open import Algebra.Bundles using (CommutativeMonoid; AbelianGroup; Group)
 open import Algebra.Structures using (IsAbelianGroup)
 import Algebra.Definitions as Def
+import Algebra.Construct.Pointwise as Pointwise
+import Algebra.Construct.Sub.Group
 open import Relation.Binary.Core using (Rel)
 open import Relation.Binary.Definitions using (Reflexive; Symmetric; Transitive)
 open import Relation.Binary.Structures using (IsEquivalence)
@@ -51,7 +53,7 @@ open import Data.Vec.Base using (Vec; []; _∷_)
 import Data.Vec.Properties as Vecₚ
 open import Data.Vec.Functional as V using (Vector; replicate)
 open import Data.Fin.Base using (Fin; zero; suc)
-open import Data.Product.Base using (_,_; Σ-syntax)
+open import Data.Product.Base using (_,_; proj₁; Σ-syntax)
 
 private
   variable
@@ -357,15 +359,16 @@ module Accounting (m n : ℕ) where
   open import Algebra.Properties.AbelianGroup P.PacioliGroup
     using (⁻¹-∙-comm; ε⁻¹≈ε)
 
-  -- A row assigns a T-account to each of the n named accounts. This is
-  -- the n-fold product of the Pacioli group: itself an abelian group,
-  -- added account-by-account.
-  Row : Set
-  Row = Vector T n
+  -- A row assigns a T-account to each of the n named accounts. The rows
+  -- are the n-fold product of the Pacioli group -- an abelian group under
+  -- account-wise operations -- which the stdlib hands us for free as the
+  -- pointwise lifting of the Pacioli group over the index set Fin n.
+  RowGroup : AbelianGroup 0ℓ 0ℓ
+  RowGroup = Pointwise.abelianGroup (Fin n) P.PacioliGroup
 
-  infixl 6 _∙ᴿ_
-  _∙ᴿ_ : Row → Row → Row
-  (f ∙ᴿ g) i = f i ∙ᵀ g i
+  open AbelianGroup RowGroup using () renaming
+    ( Carrier to Row ; _≈_ to _≈ᴿ_ ; _∙_ to _∙ᴿ_
+    ; ε to εᴿ ; _⁻¹ to _⁻¹ᴿ ; refl to reflᴿ )
 
   -- The trial balance of a row: sum its T-accounts in the Pacioli group.
   total : Row → T
@@ -393,7 +396,7 @@ module Accounting (m n : ℕ) where
 
   -- The empty / initial ledger: every account at the zero-account.
   empty : Tx
-  empty = replicate n εᵀ , total-ε n
+  empty = εᴿ , total-ε n
 
   -- Posting two balanced rows: add account-wise. Balance is preserved by
   -- ∑-distrib-+ (total is a homomorphism) -- "zero ∙ᵀ zero is zero".
@@ -448,16 +451,56 @@ module Accounting (m n : ℕ) where
     trans (∙-congˡ (total-⁻¹ (V.tail f)))
           (⁻¹-∙-comm (V.head f) (sum (V.tail f)))
 
-  infix 8 _⁻¹ᴿ
-  _⁻¹ᴿ : Row → Row
-  (f ⁻¹ᴿ) i = f i ⁻¹ᵀ
-
   reverse : Tx → Tx
   reverse (f , bf) = (f ⁻¹ᴿ) , (begin
     total (f ⁻¹ᴿ)  ≈⟨ total-⁻¹ f ⟩
     (total f) ⁻¹ᵀ  ≈⟨ ⁻¹-cong bf ⟩
     εᵀ ⁻¹ᵀ         ≈⟨ ε⁻¹≈ε ⟩
     εᵀ             ∎)
+
+  ----------------------------------------------------------------------
+  -- Balanced transactions as a subgroup.
+  --
+  -- empty / post / reverse are the identity, multiplication and inverse
+  -- of the balanced rows under account-wise operations. Presenting them
+  -- through the stdlib's Subgroup -- the kernel of the trial balance
+  -- total : RowGroup ⟶ PacioliGroup, given as the injection
+  -- proj₁ : Tx ↪ Row -- pulls back all the group laws. Because the
+  -- subgroup's equality *is* equality of the underlying rows, the
+  -- monomorphism witness is pure refl / identity: the closure proofs
+  -- (empty, post, reverse) are the only real content, exactly as it
+  -- should be.
+
+  module Sub = Algebra.Construct.Sub.Group (AbelianGroup.group RowGroup)
+
+  balancedSubgroup : Sub.Subgroup 0ℓ 0ℓ
+  balancedSubgroup = record
+    { domain = record
+        { Carrier = Tx
+        ; _≈_     = λ x y → proj₁ x ≈ᴿ proj₁ y
+        ; _∙_     = post
+        ; ε       = empty
+        ; _⁻¹     = reverse
+        }
+    ; ι = proj₁
+    ; ι-monomorphism = record
+        { isGroupHomomorphism = record
+            { isMonoidHomomorphism = record
+                { isMagmaHomomorphism = record
+                    { isRelHomomorphism = record { cong = λ p → p }
+                    ; homo = λ _ _ → reflᴿ
+                    }
+                ; ε-homo = reflᴿ
+                }
+            ; ⁻¹-homo = λ _ → reflᴿ
+            }
+        ; injective = λ p → p
+        }
+    }
+
+  -- ...and so the balanced transactions are a group in their own right.
+  TxGroup : Group 0ℓ 0ℓ
+  TxGroup = Sub.Subgroup.group balancedSubgroup
 
 ------------------------------------------------------------------------
 -- A worked example

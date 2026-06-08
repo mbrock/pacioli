@@ -1,0 +1,100 @@
+------------------------------------------------------------------------
+-- The Agda standard library
+--
+-- Any predicate transformer for fresh lists
+------------------------------------------------------------------------
+
+{-# OPTIONS --cubical-compatible --safe #-}
+
+module Data.List.Fresh.Relation.Unary.Any where
+
+open import Data.List.Fresh using (List#; []; cons; _∷#_; _#[_]_; _#_)
+open import Data.Product.Base using (_,_; -,_)
+open import Data.Sum.Base using (_⊎_; [_,_]′; inj₁; inj₂)
+open import Function.Bundles using (_⇔_; mk⇔)
+open import Level using (Level; _⊔_)
+open import Relation.Binary.Core using (Rel)
+open import Relation.Nullary.Negation using (¬_; contradiction)
+open import Relation.Nullary.Decidable as Dec using (Dec; no; _⊎?_)
+open import Relation.Unary as Unary
+  using (Pred; Satisfiable; Decidable; _⊆_)
+
+private
+  variable
+    a p q r : Level
+    A : Set a
+    R : Rel A r
+    P : Pred A p
+    Q : Pred A q
+    x : A
+    xs : List# A R
+    pr : x #[ R ] xs
+
+
+module _ {A : Set a} {R : Rel A r} (P : Pred A p) where
+
+  data Any : List# A R → Set (p ⊔ a ⊔ r) where
+    here  : P x → Any (cons x xs pr)
+    there : Any xs → Any (cons x xs pr)
+
+module _ {pr : x #[ R ] xs} where
+
+  head : ¬ Any P xs → Any P (cons x xs pr) → P x
+  head ¬tail (here p)   = p
+  head ¬tail (there ps) = contradiction ps ¬tail
+
+  tail : ¬ P x → Any P (cons x xs pr) → Any P xs
+  tail ¬head (here p)   = contradiction p ¬head
+  tail ¬head (there ps) = ps
+
+  toSum : Any P (cons x xs pr) → P x ⊎ Any P xs
+  toSum (here p) = inj₁ p
+  toSum (there ps) = inj₂ ps
+
+  fromSum : P x ⊎ Any P xs → Any P (cons x xs pr)
+  fromSum = [ here , there ]′
+
+  ⊎⇔Any : (P x ⊎ Any P xs) ⇔ Any P (cons x xs pr)
+  ⊎⇔Any = mk⇔ fromSum toSum
+
+map : P ⊆ Q → Any P xs → Any Q xs
+map p⇒q (here p)  = here (p⇒q p)
+map p⇒q (there p) = there (map p⇒q p)
+
+satisfiable : Any P xs → Satisfiable P
+satisfiable (here p)   = -, p
+satisfiable (there ps) = satisfiable ps
+
+remove   : ∀ xs → Any {R = R} P xs → List# A R
+remove-# : (p : Any {R = R} P xs) → x # xs → x # remove xs p
+
+remove (_ ∷# xs)      (here _)  = xs
+remove (cons x xs pr) (there k) = cons x (remove xs k) (remove-# k pr)
+
+remove-# (here x)  (p , ps) = ps
+remove-# (there k) (p , ps) = p , remove-# k ps
+
+infixl 4 _─_
+_─_ = remove
+
+module _ (P? : Decidable P) where
+
+  any? : Decidable (Any {R = R} P)
+  any? []        = no λ()
+  any? (x ∷# xs) = Dec.map ⊎⇔Any (P? x ⊎? any? xs)
+
+
+------------------------------------------------------------------------
+-- DEPRECATED NAMES
+------------------------------------------------------------------------
+-- Please use the new names as continuing support for the old names is
+-- not guaranteed.
+
+-- Version 2.4
+
+witness = satisfiable
+{-# WARNING_ON_USAGE witness
+"Warning: witness was deprecated in v2.4.
+Please use satisfiable instead."
+#-}
+

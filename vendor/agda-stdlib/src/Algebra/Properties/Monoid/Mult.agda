@@ -1,0 +1,96 @@
+------------------------------------------------------------------------
+-- The Agda standard library
+--
+-- Multiplication over a monoid (i.e. repeated addition)
+------------------------------------------------------------------------
+
+{-# OPTIONS --cubical-compatible --safe #-}
+
+open import Algebra.Bundles using (Monoid)
+
+module Algebra.Properties.Monoid.Mult {a ℓ} (M : Monoid a ℓ) where
+
+open import Data.Bool.Base as Bool using (true; false; _∧_)
+open import Data.Nat.Base as ℕ using (ℕ; zero; suc; NonZero)
+open import Relation.Binary.Core using (_Preserves_⟶_; _Preserves₂_⟶_⟶_)
+open import Relation.Binary.PropositionalEquality.Core as ≡ using (_≡_)
+
+-- View of the monoid operator as addition
+open Monoid M
+  renaming
+  ( _∙_       to _+_
+  ; ∙-cong    to +-cong
+  ; ∙-congʳ   to +-congʳ
+  ; ∙-congˡ   to +-congˡ
+  ; identityˡ to +-identityˡ
+  ; identityʳ to +-identityʳ
+  ; assoc     to +-assoc
+  ; ε         to 0#
+  )
+
+open import Algebra.Definitions _≈_
+open import Algebra.Properties.Semigroup semigroup
+open import Relation.Binary.Reasoning.Setoid setoid
+
+------------------------------------------------------------------------
+-- Definition
+
+open import Algebra.Definitions.RawMonoid rawMonoid public
+  using (_×_; _?>₀_; _?>_∙_)
+
+------------------------------------------------------------------------
+-- Properties of _×_
+
+×-congʳ : ∀ n → (n ×_) Preserves _≈_ ⟶ _≈_
+×-congʳ 0       x≈x′ = refl
+×-congʳ (suc n) x≈x′ = +-cong x≈x′ (×-congʳ n x≈x′)
+
+×-cong : _×_ Preserves₂ _≡_ ⟶ _≈_ ⟶ _≈_
+×-cong {n} ≡.refl x≈x′ = ×-congʳ n x≈x′
+
+×-congˡ : ∀ {x} → (_× x) Preserves _≡_ ⟶ _≈_
+×-congˡ m≡n = ×-cong m≡n refl
+
+-- _×_ is homomorphic with respect to _ℕ+_/_+_.
+
+×-homo-0 : ∀ x → 0 × x ≈ 0#
+×-homo-0 x = refl
+
+×-homo-1 : ∀ x → 1 × x ≈ x
+×-homo-1 = +-identityʳ
+
+×-homo-+ : ∀ x m n → (m ℕ.+ n) × x ≈ m × x + n × x
+×-homo-+ x 0       n = sym (+-identityˡ (n × x))
+×-homo-+ x (suc m) n = sym (uv≈w⇒xu∙v≈xw (sym (×-homo-+ x m n)) x)
+
+×-idem : ∀ {c} → _+_ IdempotentOn c →
+         ∀ n → .{{_ : NonZero n}} → n × c ≈ c
+×-idem {c} idem (suc zero)    = +-identityʳ c
+×-idem {c} idem (suc n@(suc _)) = begin
+  c + (n × c) ≈⟨ +-congˡ (×-idem idem n ) ⟩
+  c + c       ≈⟨ idem ⟩
+  c           ∎
+
+×-assocˡ : ∀ x m n → m × (n × x) ≈ (m ℕ.* n) × x
+×-assocˡ x zero    n = refl
+×-assocˡ x (suc m) n = begin
+  n × x + m × n × x     ≈⟨ +-congˡ (×-assocˡ x m n) ⟩
+  n × x + (m ℕ.* n) × x ≈⟨ ×-homo-+ x n (m ℕ.* n) ⟨
+  (suc m ℕ.* n) × x     ∎
+
+-- _?>₀_ is homomorphic with respect to Bool._∧_.
+
+?>₀-homo-true : ∀ x → true ?>₀ x ≈ x
+?>₀-homo-true _ = refl
+
+?>₀-assocˡ : ∀ b b′ x → b ?>₀ b′ ?>₀ x ≈ (b ∧ b′) ?>₀ x
+?>₀-assocˡ false _ _ = refl
+?>₀-assocˡ true  _ _ = refl
+
+b?>x∙y≈b?>₀x+y : ∀ b x y → b ?> x ∙ y ≈ b ?>₀ x + y
+b?>x∙y≈b?>₀x+y true  _ _ = refl
+b?>x∙y≈b?>₀x+y false _ y = sym (+-identityˡ y)
+
+b?>₀x≈b?>x∙0 : ∀ b x → b ?>₀ x ≈ b ?> x ∙ 0#
+b?>₀x≈b?>x∙0 true  _ = sym (+-identityʳ _)
+b?>₀x≈b?>x∙0 false x = refl

@@ -1,4 +1,4 @@
 name: pacioli
 include: src
-depend: standard-library
+depend: standard-library-2.4
 
