@@ -40,6 +40,7 @@ open import Algebra.Structures using (IsAbelianGroup)
 import Algebra.Definitions as Def
 import Algebra.Construct.Pointwise as Pointwise
 import Algebra.Construct.Sub.Group
+import Algebra.Morphism.Structures as Morphism
 open import Relation.Binary.Core using (Rel)
 open import Relation.Binary.Definitions using (Reflexive; Symmetric; Transitive)
 open import Relation.Binary.Structures using (IsEquivalence)
@@ -51,6 +52,9 @@ open import Data.Nat.Base using (ℕ)
 import Data.Nat.Properties as ℕ
 import Data.Parity.Base as ℙ
 open import Data.Parity.Base using (Parity; 0ℙ; 1ℙ)
+import Data.Integer.Base as ℤ
+import Data.Integer.Properties as ℤ
+import Data.Integer.Tactic.RingSolver as ℤRing
 open import Data.Sum.Base using (inj₁; inj₂)
 import Data.Vec.Base as Vec
 open import Data.Vec.Base using (Vec; []; _∷_)
@@ -400,6 +404,108 @@ private
   ; ∸-sound       = ℕ.m∸n+n≡m
   ; ∸-meet-zero   = ℕ-reduced-disjoint
   }
+
+module ScalarIntegerReading where
+
+  module P = Pacioli ℕ.+-0-commutativeMonoid ℕ.+-cancelˡ-≡
+  module R = ReducedPacioli ℕ-MeetDifferenceMonoid
+
+  T : Set
+  T = DebitCredit ℕ
+
+  signedMagnitude : Parity → ℕ → ℤ.ℤ
+  signedMagnitude p n = ℤ._◃_ (ℙ.toSign p) n
+
+  toℤ : T → ℤ.ℤ
+  toℤ x with ℕ.≤-total (debit x) (credit x)
+  ... | inj₁ _ = signedMagnitude 1ℙ (R.polarizedReading 1ℙ x)
+  ... | inj₂ _ = signedMagnitude 0ℙ (R.polarizedReading 0ℙ x)
+
+  toℤ-⊖ : ∀ a b → toℤ (a // b) ≡ ℤ._⊖_ a b
+  toℤ-⊖ a b with ℕ.≤-total a b
+  ... | inj₁ a≤b = ≡-trans
+    (cong (ℤ._◃_ (ℙ.toSign 1ℙ)) (ℕ-∸-⊓ b a))
+    (≡-trans
+      (ℤ.-◃n≡-n (b ℕ.∸ a))
+      (≡-sym (ℤ.⊖-≤ a≤b)))
+  ... | inj₂ b≤a = ≡-trans
+    (cong (ℤ._◃_ (ℙ.toSign 0ℙ)) (ℕ-∸-⊓ a b))
+    (≡-trans
+      (ℤ.+◃n≡+n (a ℕ.∸ b))
+      (≡-sym (ℤ.⊖-≥ b≤a)))
+
+  toℤ-diff : ∀ a b → toℤ (a // b) ≡ (ℤ.+ a) ℤ.- (ℤ.+ b)
+  toℤ-diff a b = ≡-trans (toℤ-⊖ a b) (≡-sym (ℤ.[+m]-[+n]≡m⊖n a b))
+
+  integer-diff-homo : ∀ i j k l →
+    (i ℤ.+ k) ℤ.- (j ℤ.+ l) ≡ ((i ℤ.- j) ℤ.+ (k ℤ.- l))
+  integer-diff-homo = ℤRing.solve-∀
+
+  nat-diff-homo : ∀ a b c d →
+    (ℤ.+ (a ℕ.+ c)) ℤ.- (ℤ.+ (b ℕ.+ d))
+      ≡ (((ℤ.+ a) ℤ.- (ℤ.+ b)) ℤ.+ ((ℤ.+ c) ℤ.- (ℤ.+ d)))
+  nat-diff-homo a b c d = ≡-trans
+    (cong₂ ℤ._-_ (ℤ.pos-+ a c) (ℤ.pos-+ b d))
+    (integer-diff-homo (ℤ.+ a) (ℤ.+ b) (ℤ.+ c) (ℤ.+ d))
+
+  toℤ-homo : ∀ x y → toℤ (x P.∙ᵀ y) ≡ toℤ x ℤ.+ toℤ y
+  toℤ-homo (a // b) (c // d) = ≡-trans
+    (toℤ-diff (a ℕ.+ c) (b ℕ.+ d))
+    (≡-trans
+      (nat-diff-homo a b c d)
+      (cong₂ ℤ._+_ (≡-sym (toℤ-diff a b)) (≡-sym (toℤ-diff c d))))
+
+  add-right-diff : ∀ a b k →
+    (ℤ.+ (a ℕ.+ k)) ℤ.- (ℤ.+ (b ℕ.+ k)) ≡ (ℤ.+ a) ℤ.- (ℤ.+ b)
+  add-right-diff a b k = ≡-trans
+    (ℤ.[+m]-[+n]≡m⊖n (a ℕ.+ k) (b ℕ.+ k))
+    (≡-trans
+      (cong₂ ℤ._⊖_ (ℕ.+-comm a k) (ℕ.+-comm b k))
+      (≡-trans
+        (ℤ.+-cancelˡ-⊖ k a b)
+        (≡-sym (ℤ.[+m]-[+n]≡m⊖n a b))))
+
+  cross-diff : ∀ a b c d →
+    a ℕ.+ d ≡ c ℕ.+ b →
+    (ℤ.+ a) ℤ.- (ℤ.+ b) ≡ (ℤ.+ c) ℤ.- (ℤ.+ d)
+  cross-diff a b c d p = ≡-trans
+    (≡-sym (add-right-diff a b d))
+    (≡-trans
+      (cong₂ ℤ._-_ (cong ℤ.+_ p) (cong ℤ.+_ (ℕ.+-comm b d)))
+      (add-right-diff c d b))
+
+  toℤ-cong : ∀ x y → x P.≈ᵀ y → toℤ x ≡ toℤ y
+  toℤ-cong (a // b) (c // d) p = ≡-trans
+    (toℤ-diff a b)
+    (≡-trans
+      (cross-diff a b c d p)
+      (≡-sym (toℤ-diff c d)))
+
+  toℤ-ε : toℤ P.εᵀ ≡ ℤ.0ℤ
+  toℤ-ε = ≡-trans (toℤ-⊖ 0 0) (ℤ.n⊖n≡0 0)
+
+  toℤ-inverse : ∀ x → toℤ (x P.⁻¹ᵀ) ≡ ℤ.-_ (toℤ x)
+  toℤ-inverse (a // b) = ≡-trans
+    (toℤ-⊖ b a)
+    (≡-trans
+      (ℤ.⊖-swap b a)
+      (cong ℤ.-_ (≡-sym (toℤ-⊖ a b))))
+
+  module ToℤGroup = Morphism.GroupMorphisms
+    (AbelianGroup.rawGroup P.PacioliGroup)
+    (AbelianGroup.rawGroup ℤ.+-0-abelianGroup)
+
+  isToℤGroupHomomorphism : ToℤGroup.IsGroupHomomorphism toℤ
+  isToℤGroupHomomorphism = record
+    { isMonoidHomomorphism = record
+      { isMagmaHomomorphism = record
+        { isRelHomomorphism = record { cong = λ {x} {y} → toℤ-cong x y }
+        ; homo = toℤ-homo
+        }
+      ; ε-homo = toℤ-ε
+      }
+    ; ⁻¹-homo = toℤ-inverse
+    }
 
 ------------------------------------------------------------------------
 -- The non-negative n-vectors as a cancellative commutative monoid
