@@ -503,6 +503,117 @@ module Accounting (m n : ℕ) where
   TxGroup = Sub.Subgroup.group balancedSubgroup
 
 ------------------------------------------------------------------------
+-- SPSC ring buffers as bounded T-accounts
+--
+-- The specification is deliberately just two monotone counters and two
+-- bounds. The Pacioli account below is the accounting model of those
+-- counters, not the admission controller: enqueue/dequeue constructors
+-- require the non-negativity guards, and the verified layer packages
+-- the usual empty-plus-preservation closure proof.
+
+module RingBuffer (N : ℕ) where
+
+  record State : Set where
+    constructor ring
+    field
+      head : ℕ
+      tail : ℕ
+
+  open State public
+
+  -- Freestanding specification: occupancy is head - tail and free space
+  -- is (tail + N) - head. Safety is exactly the two halfspace guards.
+  Occupancy : State → ℕ
+  Occupancy s = head s ℕ.∸ tail s
+
+  Free : State → ℕ
+  Free s = (tail s ℕ.+ N) ℕ.∸ head s
+
+  NoUnderflow : State → Set
+  NoUnderflow s = tail s ℕ.≤ head s
+
+  NoOverflow : State → Set
+  NoOverflow s = head s ℕ.≤ tail s ℕ.+ N
+
+  HasRoom : State → Set
+  HasRoom s = head s ℕ.< tail s ℕ.+ N
+
+  HasItem : State → Set
+  HasItem s = tail s ℕ.< head s
+
+  record Safe (s : State) : Set where
+    constructor safe
+    field
+      noUnderflow : NoUnderflow s
+      noOverflow  : NoOverflow s
+
+  open Safe public
+
+  emptyState : State
+  emptyState = ring 0 0
+
+  enqueue : (s : State) → HasRoom s → State
+  enqueue s _ = ring (ℕ.suc (head s)) (tail s)
+
+  dequeue : (s : State) → HasItem s → State
+  dequeue s _ = ring (head s) (ℕ.suc (tail s))
+
+  emptySafe : Safe emptyState
+  emptySafe = safe ℕ.z≤n ℕ.z≤n
+
+  enqueueSafe : ∀ s → Safe s → (room : HasRoom s) → Safe (enqueue s room)
+  enqueueSafe s ok room = safe
+    (ℕ.m≤n⇒m≤1+n (noUnderflow ok))
+    room
+
+  dequeueSafe : ∀ s → Safe s → (item : HasItem s) → Safe (dequeue s item)
+  dequeueSafe s ok item = safe
+    item
+    (ℕ.m≤n⇒m≤1+n (noOverflow ok))
+
+  ----------------------------------------------------------------------
+  -- Accounting model.
+  --
+  -- Over ℕ, the Pacioli group is the group of differences of the two
+  -- counters: [ head // tail ]. Posting one enqueue debits the head
+  -- counter; posting one dequeue credits the tail counter.
+
+  module P = Pacioli ℕ.+-0-commutativeMonoid ℕ.+-cancelˡ-≡
+  open AbelianGroup P.PacioliGroup
+    renaming (Carrier to T; _≈_ to _≈ᵀ_; _∙_ to _∙ᵀ_; ε to εᵀ; _⁻¹ to _⁻¹ᵀ)
+
+  account : State → T
+  account s = head s // tail s
+
+  enqueuePosting : T
+  enqueuePosting = 1 // 0
+
+  dequeuePosting : T
+  dequeuePosting = 0 // 1
+
+  ----------------------------------------------------------------------
+  -- Verified layer: the same guard propositions drive the typed API.
+
+  record Verified : Set where
+    constructor verified
+    field
+      state : State
+      proof : Safe state
+
+  open Verified public
+
+  empty : Verified
+  empty = verified emptyState emptySafe
+
+  enqueueᵛ : (b : Verified) → HasRoom (state b) → Verified
+  enqueueᵛ b room = verified (enqueue (state b) room)
+                             (enqueueSafe (state b) (proof b) room)
+
+  dequeueᵛ : (b : Verified) → HasItem (state b) → Verified
+  dequeueᵛ b item = verified (dequeue (state b) item)
+                             (dequeueSafe (state b) (proof b) item)
+
+------------------------------------------------------------------------
 -- A worked example
 --
 -- Two incommensurate currencies (a 2-vector of [usd , eur]) and three
