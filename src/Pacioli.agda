@@ -1,35 +1,9 @@
 {-# OPTIONS --safe #-}
 
-------------------------------------------------------------------------
--- The Pacioli group and the mathematics of double-entry bookkeeping
---
 -- This module formalises the construction behind double-entry
 -- bookkeeping (DEB) as described in David Ellerman's "The Mathematics
--- of Double-Entry Bookkeeping" (Mathematics Magazine, 1985) and its
--- vector generalisation ("Double Entry Multidimensional Accounting",
--- 1986).
+-- of Double-Entry Bookkeeping" (Mathematics Magazine, 1985).
 --
--- Ellerman's central observation: a T-account
---
---     [ debit // credit ]
---
--- is exactly an ordered pair in the *group of differences* of a
--- commutative monoid -- the additive analogue of building the
--- fractions q = num/den out of the whole numbers. The group of
--- differences of the non-negative reals (or, multidimensionally, the
--- non-negative vectors) is what he names the *Pacioli group*, after
--- Luca Pacioli who codified DEB in 1494. The modern relative of this
--- construction is the Grothendieck group; the Pacioli group is its
--- 15th-century special case.
---
--- The construction works for any *cancellative* commutative monoid.
--- Cancellativity is the algebraic content of "you can read a balance
--- off a T-account unambiguously": it is precisely what makes the
--- cross-sum equality below an equivalence relation. We therefore take
--- as input a commutative monoid together with a single left-
--- cancellation witness, and derive everything else.
-------------------------------------------------------------------------
-
 module Pacioli where
 
 import Level as Level
@@ -69,38 +43,26 @@ private
   variable
     c ℓ ℓ≤ : Level
 
-------------------------------------------------------------------------
--- T-accounts
---
--- A T-account is an ordered pair written [ debit // credit ]. The name
--- "T-account" comes from the bookkeeper's habit of drawing a T and
--- listing debit entries down the left, credit entries down the right.
-
-record DebitCredit (A : Set c) : Set c where
+record T-Account (A : Set c) : Set c where
   constructor _//_
   field
     debit  : A
     credit : A
 
-open DebitCredit public
+open T-Account public
 
-------------------------------------------------------------------------
--- The Pacioli group of a cancellative commutative monoid
---
 -- Given a commutative monoid (Amounts, ∙, ε) in which ∙ is left-
--- cancellative, the T-accounts over it form an abelian group: the
--- group of differences, a.k.a. the Pacioli group.
+-- cancellative, the T-accounts over it form an abelian group.
+--
+-- The Pacioli group has neither positive nor negative values. There
+-- are instead two dual isomorphisms with the integers, equally valid,
+-- representing debit-positive and credit-positive interpretations.
 
 module Pacioli
   {c ℓ} (CM : CommutativeMonoid c ℓ)  (open CommutativeMonoid CM)
   (∙-cancelˡ : Def.LeftCancellative _≈_ _∙_)
   where
 
-  -- Pull in equational reasoning for the underlying setoid, and the two
-  -- stdlib consequences we need: deriving right-cancellation from left-
-  -- cancellation + commutativity, and the "middle-four exchange"
-  -- (a ∙ c) ∙ (b ∙ d) ≈ (a ∙ b) ∙ (c ∙ d), which is the only shuffling
-  -- lemma the group laws really require.
   open import Relation.Binary.Reasoning.Setoid setoid
   open import Algebra.Consequences.Setoid setoid
     using (comm∧cancelˡ⇒cancelʳ; comm∧assoc⇒middleFour)
@@ -115,44 +77,21 @@ module Pacioli
   infixl 6 _∙ᵀ_
   infix  8 _⁻¹ᵀ
 
-  -- Equality of T-accounts is equality of *cross-sums* (Ellerman):
-  --   [ a // b ] = [ c // d ]   iff   a + d = c + b.
-  -- Two accounts denote the same balance exactly when the debit of one
-  -- plus the credit of the other agree both ways round.
-  _≈ᵀ_ : Rel (DebitCredit Carrier) ℓ
+  _≈ᵀ_ : Rel (T-Account Carrier) ℓ
   (a // b) ≈ᵀ (c // d) = a ∙ d ≈ c ∙ b
 
-  -- Addition of T-accounts: add debits to debits, credits to credits.
-  -- This is the *only* operation in the whole system. Posting a journal
-  -- to a ledger, recording a transaction -- all of it is this ∙ᵀ.
-  _∙ᵀ_ : Op₂ (DebitCredit Carrier)
+  _∙ᵀ_ : Op₂ (T-Account Carrier)
   (a // b) ∙ᵀ (c // d) = (a ∙ c) // (b ∙ d)
 
-  -- The zero-account [ ε // ε ]. Equations encode as zero-accounts and
-  -- valid transactions are additions of (other) zero-accounts; zero
-  -- plus zero is zero.
-  εᵀ : DebitCredit Carrier
+  εᵀ : T-Account Carrier
   εᵀ = ε // ε
 
-  -- The additive inverse reverses debit and credit. Negating an account
-  -- is just swapping the two sides of the T -- this is what makes a
-  -- "credit" the undo of a "debit".
-  _⁻¹ᵀ : Op₁ (DebitCredit Carrier)
+  _⁻¹ᵀ : Op₁ (T-Account Carrier)
   (a // b) ⁻¹ᵀ = b // a
 
-  -- Polarity is the abstract debit/credit reading symmetry. Debit
-  -- polarity leaves an account alone; credit polarity swaps the two
-  -- sides, i.e. applies the group inverse.
-  polarize : Parity → Op₁ (DebitCredit Carrier)
+  polarize : Parity → Op₁ (T-Account Carrier)
   polarize 0ℙ x = x
   polarize 1ℙ x = x ⁻¹ᵀ
-
-  ----------------------------------------------------------------------
-  -- The cross-sum relation is an equivalence.
-  --
-  -- Reflexivity and symmetry are immediate. Transitivity is the one
-  -- place cancellation earns its keep: from a∙d ≈ c∙b and c∙f ≈ e∙d we
-  -- recover a∙f ≈ e∙b only after cancelling the shared d.
 
   ≈ᵀ-refl : Reflexive _≈ᵀ_
   ≈ᵀ-refl {a // b} = refl
@@ -160,7 +99,6 @@ module Pacioli
   ≈ᵀ-sym : Symmetric _≈ᵀ_
   ≈ᵀ-sym {a // b} {c // d} = sym
 
-  -- A small rearrangement used three times below: (a ∙ b) ∙ c ≈ (a ∙ c) ∙ b.
   private
     swap : ∀ a b c → (a ∙ b) ∙ c ≈ (a ∙ c) ∙ b
     swap a b c = begin
@@ -183,13 +121,6 @@ module Pacioli
   ≈ᵀ-isEquivalence = record
     { refl = ≈ᵀ-refl ; sym = ≈ᵀ-sym ; trans = ≈ᵀ-trans }
 
-  ----------------------------------------------------------------------
-  -- The group laws.
-  --
-  -- Each is a short reasoning chain; the middle-four exchange handles
-  -- congruence and commutativity, and plain associativity/identity
-  -- handle the rest. No solver required.
-
   ∙ᵀ-cong : ∀ {x y u v} → x ≈ᵀ y → u ≈ᵀ v → (x ∙ᵀ u) ≈ᵀ (y ∙ᵀ v)
   ∙ᵀ-cong {a // b} {a′ // b′} {c // d} {c′ // d′} p q = begin
     (a ∙ c) ∙ (b′ ∙ d′)  ≈⟨ middleFour a b′ c d′ ⟩
@@ -197,9 +128,6 @@ module Pacioli
     (a′ ∙ b) ∙ (c′ ∙ d)  ≈⟨ middleFour a′ c′ b d ⟩
     (a′ ∙ c′) ∙ (b ∙ d)  ∎
 
-  -- Associativity is *not* a commutative shuffle: both components are
-  -- reassociated independently, so a single ∙-cong over the two sides
-  -- does it.
   ∙ᵀ-assoc : ∀ x y z → ((x ∙ᵀ y) ∙ᵀ z) ≈ᵀ (x ∙ᵀ (y ∙ᵀ z))
   ∙ᵀ-assoc (a // b) (c // d) (e // f) =
     ∙-cong (assoc a c e) (sym (assoc b d f))
@@ -216,8 +144,6 @@ module Pacioli
     a ∙ b        ≈⟨ ∙-congˡ (identityʳ b) ⟨
     a ∙ (b ∙ ε)  ∎
 
-  -- The double-entry principle in one line: an account and its
-  -- debit/credit-reversed inverse sum to the zero-account.
   ∙ᵀ-inverseˡ : ∀ x → ((x ⁻¹ᵀ) ∙ᵀ x) ≈ᵀ εᵀ
   ∙ᵀ-inverseˡ (a // b) = begin
     (b ∙ a) ∙ ε  ≈⟨ identityʳ _ ⟩
@@ -242,9 +168,6 @@ module Pacioli
   ∙ᵀ-comm : ∀ x y → (x ∙ᵀ y) ≈ᵀ (y ∙ᵀ x)
   ∙ᵀ-comm (a // b) (c // d) = ∙-cong (comm a c) (comm d b)
 
-  ----------------------------------------------------------------------
-  -- Polarity acts on T-accounts by the two-element group.
-
   polarize-involutive : ∀ p x → polarize p (polarize p x) ≈ᵀ x
   polarize-involutive 0ℙ x        = ≈ᵀ-refl
   polarize-involutive 1ℙ (a // b) = ≈ᵀ-refl
@@ -261,15 +184,8 @@ module Pacioli
   polarize-credit : ∀ x → polarize 1ℙ x ≈ᵀ (polarize 0ℙ x) ⁻¹ᵀ
   polarize-credit x = ≈ᵀ-refl
 
-  ----------------------------------------------------------------------
-  -- Assembling the abelian group.
-  --
-  -- This is the canonical stdlib shape: a tower of records whose leaves
-  -- are the named proofs above, so the structure reads as a table of
-  -- contents rather than a wall of inline proofs.
-
-  isPacioliGroup : IsAbelianGroup _≈ᵀ_ _∙ᵀ_ εᵀ _⁻¹ᵀ
-  isPacioliGroup = record
+  isAbelianGroup : IsAbelianGroup _≈ᵀ_ _∙ᵀ_ εᵀ _⁻¹ᵀ
+  isAbelianGroup = record
     { isGroup = record
       { isMonoid = record
         { isSemigroup = record
@@ -287,19 +203,17 @@ module Pacioli
     ; comm = ∙ᵀ-comm
     }
 
-  PacioliGroup : AbelianGroup c ℓ
-  PacioliGroup = record
-    { Carrier = DebitCredit Carrier
+  abelianGroup : AbelianGroup c ℓ
+  abelianGroup = record
+    { Carrier = T-Account Carrier
     ; _≈_ = _≈ᵀ_
     ; _∙_ = _∙ᵀ_
     ; ε = εᵀ
     ; _⁻¹ = _⁻¹ᵀ
-    ; isAbelianGroup = isPacioliGroup
+    ; isAbelianGroup = isAbelianGroup
     }
 
-------------------------------------------------------------------------
--- Reduced representatives require more structure
---
+
 -- The abstract Pacioli construction only needs cancellation. A canonical
 -- reduced T-account needs a way to find a common part (meet) and remove
 -- a proven subamount (difference). This tier captures exactly that
@@ -324,10 +238,7 @@ record MeetDifferenceMonoid c ℓ ℓ≤ : Set (Level.suc (c ⊔ ℓ ⊔ ℓ≤)
     ⊓≤ˡ : ∀ a b → (a ⊓ b) ≤ a
     ⊓≤ʳ : ∀ a b → (a ⊓ b) ≤ b
 
-    -- Removing a subamount and adding it back recovers the original.
     ∸-sound : ∀ {a k} → k ≤ a → (a ∸ k) ∙ k ≈ a
-
-    -- After removing the meet, no common part remains.
     ∸-meet-zero : ∀ a b → ((a ∸ (a ⊓ b)) ⊓ (b ∸ (a ⊓ b))) ≈ ε
 
 module ReducedPacioli {c ℓ ℓ≤} (MDM : MeetDifferenceMonoid c ℓ ℓ≤) where
@@ -338,7 +249,7 @@ module ReducedPacioli {c ℓ ℓ≤} (MDM : MeetDifferenceMonoid c ℓ ℓ≤) w
   module P = Pacioli Amounts ∙-cancelˡ
 
   T : Set c
-  T = DebitCredit Carrier
+  T = T-Account Carrier
 
   common : T → Carrier
   common (a // b) = a ⊓ b
@@ -413,7 +324,7 @@ module ScalarIntegerReading where
   module R = ReducedPacioli ℕ-MeetDifferenceMonoid
 
   T : Set
-  T = DebitCredit ℕ
+  T = T-Account ℕ
 
   signedMagnitude : Parity → ℕ → ℤ.ℤ
   signedMagnitude p n = ℤ._◃_ (ℙ.toSign p) n
@@ -494,7 +405,7 @@ module ScalarIntegerReading where
       (cong ℤ.-_ (≡-sym (toℤ-⊖ a b))))
 
   module ToℤGroup = Morphism.GroupMorphisms
-    (AbelianGroup.rawGroup P.PacioliGroup)
+    (AbelianGroup.rawGroup P.abelianGroup)
     (AbelianGroup.rawGroup ℤ.+-0-abelianGroup)
 
   isToℤGroupHomomorphism : ToℤGroup.IsGroupHomomorphism toℤ
@@ -559,9 +470,6 @@ module ScalarIntegerReading where
     ; surjective = toℤ-surjective
     }
 
-------------------------------------------------------------------------
--- The non-negative n-vectors as a cancellative commutative monoid
---
 -- Ellerman's multidimensional accounting: amounts are vectors of
 -- incommensurate non-negative quantities (so many dollars, so many
 -- euros, so many tonnes of steel), added componentwise. ℕ is a
@@ -577,8 +485,6 @@ module NonNegativeVectors (m : ℕ) where
   _+_ : Op₂ Amount
   _+_ = Vec.zipWith ℕ._+_
 
-  -- Vec-of-(commutative monoid) is a commutative monoid, built from the
-  -- componentwise lifting lemmas in Data.Vec.Properties.
   Amounts : CommutativeMonoid 0ℓ 0ℓ
   Amounts = record
     { Carrier = Amount
@@ -606,9 +512,6 @@ module NonNegativeVectors (m : ℕ) where
         }
     }
 
-  -- Left-cancellation, componentwise. Right-cancellation is then free
-  -- inside the Pacioli construction (derived from this + commutativity),
-  -- so we never write it out.
   +-cancelˡ′ : ∀ {m} → Def.LeftCancellative (_≡_ {A = Vec ℕ m}) (Vec.zipWith ℕ._+_)
   +-cancelˡ′ []       []       []       _  = ≡-refl
   +-cancelˡ′ (x ∷ xs) (y ∷ ys) (z ∷ zs) eq =
@@ -625,7 +528,7 @@ module VectorIntegerReading (m : ℕ) where
   module S = ScalarIntegerReading
 
   T : Set
-  T = DebitCredit N.Amount
+  T = T-Account N.Amount
 
   IntVector : Set
   IntVector = Vector ℤ.ℤ m
@@ -665,7 +568,7 @@ module VectorIntegerReading (m : ℕ) where
   toℤᵛ-inverse (a // b) i = S.toℤ-inverse (Vec.lookup a i // Vec.lookup b i)
 
   module ToℤᵛGroup = Morphism.GroupMorphisms
-    (AbelianGroup.rawGroup P.PacioliGroup)
+    (AbelianGroup.rawGroup P.abelianGroup)
     (AbelianGroup.rawGroup IntVectorGroup)
 
   isToℤᵛGroupHomomorphism : ToℤᵛGroup.IsGroupHomomorphism toℤᵛ
@@ -803,7 +706,7 @@ module VectorIntegerReading (m : ℕ) where
   valuation-fromℤᵛ prices position = dot-congʳ prices (toℤᵛ-fromℤᵛ position)
 
   module ValuationGroup (prices : IntVector) = Morphism.GroupMorphisms
-    (AbelianGroup.rawGroup P.PacioliGroup)
+    (AbelianGroup.rawGroup P.abelianGroup)
     (AbelianGroup.rawGroup ℤ.+-0-abelianGroup)
 
   isValuationGroupHomomorphism :
@@ -1234,7 +1137,7 @@ module VectorIntegerReading (m : ℕ) where
       (dotᴬ-negʳ prices (toℤᵛ x))
 
     module ValuationᴬGroup (prices : ValueVector) = Morphism.GroupMorphisms
-      (AbelianGroup.rawGroup P.PacioliGroup)
+      (AbelianGroup.rawGroup P.abelianGroup)
       (AbelianGroup.rawGroup A)
 
     isValuationᴬGroupHomomorphism :
@@ -1388,21 +1291,6 @@ module VectorIntegerReading (m : ℕ) where
   valuationᴬ≡valuation prices account =
     dotᴬ≡dot prices (toℤᵛ account)
 
-------------------------------------------------------------------------
--- Accounting: rows, the trial balance, and balanced transactions
---
--- The bookkeeping vocabulary lines up with the algebra:
---   * a row / journal entry / ledger = one T-account per named account,
---     i.e. an element of the n-fold product of the Pacioli group
---   * the trial balance              = the group sum of a row (stdlib's
---                                      finite summation over a monoid)
---   * a balanced row / transaction   = a row whose trial balance is εᵀ
---
--- The balanced rows are exactly the kernel of the trial balance, and the
--- kernel of a group homomorphism is a subgroup. So "the initial ledger
--- balances" and "posting a balanced row keeps it balanced" are not
--- invariants we maintain -- they are closure of that subgroup, free.
-
 module Accounting (m n : ℕ) where
 
   open NonNegativeVectors m using (Amounts; +-cancelˡ)
@@ -1411,73 +1299,45 @@ module Accounting (m n : ℕ) where
   Amount : Set
   Amount = NonNegativeVectors.Amount m
 
-  -- The Pacioli group of T-accounts over these amounts. We work inside
-  -- it directly, so ∙ᵀ, εᵀ, the group laws and its equational reasoning
-  -- are all in scope under their group names.
   module P = Pacioli Amounts +-cancelˡ
-  open AbelianGroup P.PacioliGroup
+  open AbelianGroup P.abelianGroup
     renaming (Carrier to T; _≈_ to _≈ᵀ_; _∙_ to _∙ᵀ_; ε to εᵀ; _⁻¹ to _⁻¹ᵀ)
   open import Relation.Binary.Reasoning.Setoid setoid
 
-  -- Finite summation over the Pacioli group -- the trial balance -- and
-  -- its distributivity over account-wise addition, both straight from
-  -- the standard library's summation-over-a-(commutative-)monoid.
   open import Algebra.Properties.CommutativeMonoid.Sum commutativeMonoid
     using (sum; ∑-distrib-+)
-  open import Algebra.Properties.AbelianGroup P.PacioliGroup
+  open import Algebra.Properties.AbelianGroup P.abelianGroup
     using (⁻¹-∙-comm; ε⁻¹≈ε)
 
-  -- A row assigns a T-account to each of the n named accounts. The rows
-  -- are the n-fold product of the Pacioli group -- an abelian group under
-  -- account-wise operations -- which the stdlib hands us for free as the
-  -- pointwise lifting of the Pacioli group over the index set Fin n.
   RowGroup : AbelianGroup 0ℓ 0ℓ
-  RowGroup = Pointwise.abelianGroup (Fin n) P.PacioliGroup
+  RowGroup = Pointwise.abelianGroup (Fin n) P.abelianGroup
 
   open AbelianGroup RowGroup using () renaming
     ( Carrier to Row ; _≈_ to _≈ᴿ_ ; _∙_ to _∙ᴿ_
     ; ε to εᴿ ; _⁻¹ to _⁻¹ᴿ ; refl to reflᴿ )
 
-  -- The trial balance of a row: sum its T-accounts in the Pacioli group.
   total : Row → T
   total f = sum f
 
-  -- A row balances when its trial balance is the zero-account -- the
-  -- double-entry principle. The balanced rows are exactly ker total.
   Balanced : Row → Set
   Balanced f = total f ≈ᵀ εᵀ
 
   Tx : Set
   Tx = Σ[ f ∈ Row ] Balanced f
 
-  ----------------------------------------------------------------------
-  -- ker total is a subgroup: it contains the zero row and is closed
-  -- under account-wise addition. So the initial ledger balances and
-  -- posting stays balanced -- closure, not per-post bookkeeping.
-
-  -- The trial balance of the all-zero row is εᵀ (a sum of zeroes). The
-  -- size is explicit because `replicate` discards it, so leaving it
-  -- implicit would strand `sum`'s size as an unsolved metavariable.
   total-ε : ∀ k → sum {k} (replicate k εᵀ) ≈ᵀ εᵀ
   total-ε ℕ.zero    = refl
   total-ε (ℕ.suc k) = trans (identityˡ _) (total-ε k)
 
-  -- The empty / initial ledger: every account at the zero-account.
   empty : Tx
   empty = εᴿ , total-ε n
 
-  -- Posting two balanced rows: add account-wise. Balance is preserved by
-  -- ∑-distrib-+ (total is a homomorphism) -- "zero ∙ᵀ zero is zero".
   post : Tx → Tx → Tx
   post (f , bf) (g , bg) = (f ∙ᴿ g) , (begin
     total (f ∙ᴿ g)      ≈⟨ ∑-distrib-+ f g ⟩
     total f ∙ᵀ total g  ≈⟨ ∙-cong bf bg ⟩
     εᵀ ∙ᵀ εᵀ            ≈⟨ identityˡ εᵀ ⟩
     εᵀ                  ∎)
-
-  ----------------------------------------------------------------------
-  -- A single posting: the row that is the T-account `v` at account `i`
-  -- and the zero-account everywhere else. Its trial balance is just `v`.
 
   δ : ∀ {k} → Fin k → T → Vector T k
   δ zero    v = v V.∷ replicate _ εᵀ
@@ -1486,12 +1346,6 @@ module Accounting (m n : ℕ) where
   total-δ : ∀ {k} (i : Fin k) v → sum (δ i v) ≈ᵀ v
   total-δ {ℕ.suc k} zero    v = trans (∙-congˡ (total-ε k)) (identityʳ v)
   total-δ           (suc i) v = trans (identityˡ _) (total-δ i v)
-
-  ----------------------------------------------------------------------
-  -- The fundamental transaction: move an amount between two accounts by
-  -- debiting one and crediting the other. The debit posting [ a // 𝟘 ]
-  -- and the credit posting [ 𝟘 // a ] are *inverse* T-accounts, so the
-  -- row balances: the double-entry principle is literally x ∙ᵀ x⁻¹ᵀ.
 
   swapRow : Amount → Fin n → Fin n → Row
   swapRow a debitAcct creditAcct =
@@ -1507,12 +1361,6 @@ module Accounting (m n : ℕ) where
   swap : Amount → Fin n → Fin n → Tx
   swap a d c = swapRow a d c , swapBalanced a d c
 
-  ----------------------------------------------------------------------
-  -- Reversing a transaction: negate every account. This needs that the
-  -- trial balance commutes with inversion -- total is a *group* homo,
-  -- not merely a monoid one -- which is what upgrades ker total from
-  -- "closed under ∙ᴿ" to a genuine subgroup.
-
   total-⁻¹ : ∀ {k} (f : Vector T k) → sum (λ i → f i ⁻¹ᵀ) ≈ᵀ (sum f) ⁻¹ᵀ
   total-⁻¹ {ℕ.zero}  f = sym ε⁻¹≈ε
   total-⁻¹ {ℕ.suc k} f =
@@ -1525,19 +1373,6 @@ module Accounting (m n : ℕ) where
     (total f) ⁻¹ᵀ  ≈⟨ ⁻¹-cong bf ⟩
     εᵀ ⁻¹ᵀ         ≈⟨ ε⁻¹≈ε ⟩
     εᵀ             ∎)
-
-  ----------------------------------------------------------------------
-  -- Balanced transactions as a subgroup.
-  --
-  -- empty / post / reverse are the identity, multiplication and inverse
-  -- of the balanced rows under account-wise operations. Presenting them
-  -- through the stdlib's Subgroup -- the kernel of the trial balance
-  -- total : RowGroup ⟶ PacioliGroup, given as the injection
-  -- proj₁ : Tx ↪ Row -- pulls back all the group laws. Because the
-  -- subgroup's equality *is* equality of the underlying rows, the
-  -- monomorphism witness is pure refl / identity: the closure proofs
-  -- (empty, post, reverse) are the only real content, exactly as it
-  -- should be.
 
   module Sub = Algebra.Construct.Sub.Group (AbelianGroup.group RowGroup)
 
@@ -1566,18 +1401,8 @@ module Accounting (m n : ℕ) where
         }
     }
 
-  -- ...and so the balanced transactions are a group in their own right.
   TxGroup : Group 0ℓ 0ℓ
   TxGroup = Sub.Subgroup.group balancedSubgroup
-
-------------------------------------------------------------------------
--- SPSC ring buffers as bounded T-accounts
---
--- The specification is deliberately just two monotone counters and two
--- bounds. The Pacioli account below is the accounting model of those
--- counters, not the admission controller: enqueue/dequeue constructors
--- require the non-negativity guards, and the verified layer packages
--- the usual empty-plus-preservation closure proof.
 
 module RingBuffer (N : ℕ) where
 
@@ -1639,15 +1464,8 @@ module RingBuffer (N : ℕ) where
     item
     (ℕ.m≤n⇒m≤1+n (noOverflow ok))
 
-  ----------------------------------------------------------------------
-  -- Accounting model.
-  --
-  -- Over ℕ, the Pacioli group is the group of differences of the two
-  -- counters: [ head // tail ]. Posting one enqueue debits the head
-  -- counter; posting one dequeue credits the tail counter.
-
   module P = Pacioli ℕ.+-0-commutativeMonoid ℕ.+-cancelˡ-≡
-  open AbelianGroup P.PacioliGroup
+  open AbelianGroup P.abelianGroup
     renaming (Carrier to T; _≈_ to _≈ᵀ_; _∙_ to _∙ᵀ_; ε to εᵀ; _⁻¹ to _⁻¹ᵀ)
 
   account : State → T
@@ -1732,9 +1550,6 @@ module RingBuffer (N : ℕ) where
     (cong₂ ℕ._+_ (Occupancy≡reading s) (Free≡reading s))
     (readingBalanceSheet s ok)
 
-  ----------------------------------------------------------------------
-  -- Verified layer: the same guard propositions drive the typed API.
-
   record Verified : Set where
     constructor verified
     field
@@ -1754,12 +1569,6 @@ module RingBuffer (N : ℕ) where
   dequeueᵛ b item = verified (dequeue (state b) item)
                              (dequeueSafe (state b) (proof b) item)
 
-------------------------------------------------------------------------
--- A worked example
---
--- Two incommensurate currencies (a 2-vector of [usd , eur]) and three
--- accounts. A $10 cash sale is recorded by debiting Cash and crediting
--- Revenue -- one swap transaction.
 
 module ExampleSystem where
 
@@ -1774,11 +1583,9 @@ module ExampleSystem where
   revenue = suc zero
   equity  = suc (suc zero)
 
-  -- Scalar multiplication of an amount (k copies of a currency).
   infixl 7 _*_
   _*_ : ℕ → Amount → Amount
   k * x = Vec.map (k ℕ.*_) x
 
-  -- Debit Cash, credit Revenue, $10. Balanced by construction.
   cashSale : Tx
   cashSale = swap (10 * usd) cash revenue

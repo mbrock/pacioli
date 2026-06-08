@@ -1,5 +1,6 @@
 .agda/
+.zed/
 _build/
+html/
 result
 *.agdai
-

@@ -1,0 +1,182 @@
+html {
+  background: #000000;
+  color: #daccb1;
+}
+
+body {
+  margin: 0;
+  background:
+    linear-gradient(90deg, rgba(248, 176, 0, 0.015), transparent 18%),
+    linear-gradient(180deg, #000000 0%, #010101 100%);
+  color: #daccb1;
+}
+
+pre.Agda {
+  box-sizing: border-box;
+  min-height: 100vh;
+  margin: 0;
+  padding: 28px 32px;
+  overflow-x: auto;
+  background: transparent;
+  color: #daccb1;
+  font-family: "Berkeley Mono", "JetBrains Mono", "Input Mono", monospace;
+  font-size: 15px;
+  line-height: 1.58;
+  font-style: normal;
+  tab-size: 2;
+}
+
+.Agda * {
+  font-style: normal;
+}
+
+/* Aspects. */
+.Agda .Comment {
+  color: #cabca1;
+  font-weight: 650;
+}
+
+.Agda .Background {}
+
+.Agda .Markup {
+  color: #daccb1;
+}
+
+.Agda .Keyword {
+  color: #daccb1;
+  background: #0e3220;
+  border-radius: 2px;
+}
+
+.Agda .String {
+  color: #f8b000;
+}
+
+.Agda .Number {
+  color: #ff817a;
+  background: #2b1e00;
+  border-radius: 2px;
+}
+
+.Agda .Symbol {
+  color: #f8b000;
+}
+
+.Agda .PrimitiveType {
+  color: #00ceff;
+  background: #002633;
+  border-radius: 2px;
+}
+
+.Agda .Pragma {
+  color: #cabca1;
+}
+
+.Agda .Operator {
+  color: #daccb1;
+}
+
+.Agda .Hole {
+  color: #daccb1;
+  background: #3a2a00;
+  border-radius: 2px;
+}
+
+/* NameKinds. */
+.Agda .Bound,
+.Agda .Generalizable {
+  color: #f8b000;
+  background: #2b1e00;
+  border-radius: 2px;
+}
+
+.Agda .InductiveConstructor {
+  color: #f8b000;
+  background: #2b1e00;
+  border-radius: 2px;
+}
+
+.Agda .CoinductiveConstructor {
+  color: #f8b000;
+  background: #2b1e00;
+  border-radius: 2px;
+}
+
+.Agda .Datatype,
+.Agda .Postulate,
+.Agda .Primitive,
+.Agda .Record {
+  color: #00ceff;
+  background: #002633;
+  border-radius: 2px;
+}
+
+.Agda .Field {
+  color: #f8b000;
+  background: #2b1e00;
+  border-radius: 2px;
+}
+
+.Agda .Function,
+.Agda .Macro {
+  color: #3fc3ff;
+}
+
+.Agda .Module {
+  color: #f58eff;
+}
+
+/* OtherAspects. */
+.Agda .DottedPattern {
+  color: #aa9d83;
+}
+
+.Agda .UnsolvedMeta,
+.Agda .UnsolvedConstraint {
+  color: #daccb1;
+  background: #6f4f00;
+  border-radius: 2px;
+}
+
+.Agda .TerminationProblem,
+.Agda .IncompletePattern {
+  color: #daccb1;
+  background: #3a1815;
+  border-radius: 2px;
+}
+
+.Agda .Error {
+  color: #ff817a;
+  background: #3a1815;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+}
+
+.Agda .TypeChecks {
+  color: #daccb1;
+  background: #0f2c3c;
+  border-radius: 2px;
+}
+
+.Agda .Deadcode,
+.Agda .ShadowingInTelescope {
+  color: #60543c;
+  background: #090909;
+}
+
+/* Standard attributes. */
+.Agda a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.Agda a[href]:hover,
+.Agda [href].hover-highlight {
+  background: #3a2a00;
+  border-radius: 2px;
+}
+
+::selection {
+  color: #daccb1;
+  background: #0f2c3c;
+}
