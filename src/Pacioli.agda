@@ -721,6 +721,102 @@ module VectorIntegerReading (m : ℕ) where
     ; surjective = toℤᵛ-surjective
     }
 
+  dot : ∀ {n} → Vector ℤ.ℤ n → Vector ℤ.ℤ n → ℤ.ℤ
+  dot {ℕ.zero}  prices position = ℤ.0ℤ
+  dot {ℕ.suc n} prices position =
+    prices zero ℤ.* position zero ℤ.+ dot (V.tail prices) (V.tail position)
+
+  dot-congʳ : ∀ {n : ℕ} (prices : Vector ℤ.ℤ n) {position position′ : Vector ℤ.ℤ n} →
+    (∀ i → position i ≡ position′ i) → dot prices position ≡ dot prices position′
+  dot-congʳ {ℕ.zero}  prices position≈position′ = ≡-refl
+  dot-congʳ {ℕ.suc n} prices position≈position′ =
+    cong₂ ℤ._+_
+      (cong (prices zero ℤ.*_) (position≈position′ zero))
+      (dot-congʳ (V.tail prices) (λ i → position≈position′ (suc i)))
+
+  dot-distribʳ-step : ∀ a b c d e →
+    a ℤ.* (b ℤ.+ c) ℤ.+ (d ℤ.+ e)
+      ≡ (a ℤ.* b ℤ.+ d) ℤ.+ (a ℤ.* c ℤ.+ e)
+  dot-distribʳ-step = ℤRing.solve-∀
+
+  dot-distribʳ : ∀ {n : ℕ} (prices position position′ : Vector ℤ.ℤ n) →
+    dot prices (λ i → position i ℤ.+ position′ i)
+      ≡ dot prices position ℤ.+ dot prices position′
+  dot-distribʳ {ℕ.zero}  prices position position′ = ≡-sym (ℤ.+-identityʳ ℤ.0ℤ)
+  dot-distribʳ {ℕ.suc n} prices position position′ = ≡-trans
+    (cong (λ x → prices zero ℤ.* (position zero ℤ.+ position′ zero) ℤ.+ x)
+      (dot-distribʳ (V.tail prices) (V.tail position) (V.tail position′)))
+    (dot-distribʳ-step
+      (prices zero) (position zero) (position′ zero)
+      (dot (V.tail prices) (V.tail position))
+      (dot (V.tail prices) (V.tail position′)))
+
+  dot-zeroʳ : ∀ {n : ℕ} (prices : Vector ℤ.ℤ n) →
+    dot prices (λ _ → ℤ.0ℤ) ≡ ℤ.0ℤ
+  dot-zeroʳ {ℕ.zero}  prices = ≡-refl
+  dot-zeroʳ {ℕ.suc n} prices = ≡-trans
+    (cong₂ ℤ._+_
+      (ℤ.*-zeroʳ (prices zero))
+      (dot-zeroʳ (V.tail prices)))
+    (ℤ.+-identityʳ ℤ.0ℤ)
+
+  dot-negʳ-step : ∀ a b d → a ℤ.* (ℤ.- b) ℤ.+ (ℤ.- d) ≡ ℤ.- (a ℤ.* b ℤ.+ d)
+  dot-negʳ-step = ℤRing.solve-∀
+
+  dot-negʳ : ∀ {n : ℕ} (prices position : Vector ℤ.ℤ n) →
+    dot prices (λ i → ℤ.-_ (position i)) ≡ ℤ.-_ (dot prices position)
+  dot-negʳ {ℕ.zero}  prices position = ≡-refl
+  dot-negʳ {ℕ.suc n} prices position = ≡-trans
+    (cong (λ x → prices zero ℤ.* (ℤ.- position zero) ℤ.+ x)
+      (dot-negʳ (V.tail prices) (V.tail position)))
+    (dot-negʳ-step
+      (prices zero) (position zero)
+      (dot (V.tail prices) (V.tail position)))
+
+  valuation : IntVector → T → ℤ.ℤ
+  valuation prices account = dot prices (toℤᵛ account)
+
+  valuation-cong : ∀ prices x y → x P.≈ᵀ y → valuation prices x ≡ valuation prices y
+  valuation-cong prices x y x≈y = dot-congʳ prices (toℤᵛ-cong x y x≈y)
+
+  valuation-homo : ∀ prices x y →
+    valuation prices (x P.∙ᵀ y) ≡ valuation prices x ℤ.+ valuation prices y
+  valuation-homo prices x y = ≡-trans
+    (dot-congʳ prices (toℤᵛ-homo x y))
+    (dot-distribʳ prices (toℤᵛ x) (toℤᵛ y))
+
+  valuation-ε : ∀ prices → valuation prices P.εᵀ ≡ ℤ.0ℤ
+  valuation-ε prices = ≡-trans
+    (dot-congʳ prices toℤᵛ-ε)
+    (dot-zeroʳ prices)
+
+  valuation-inverse : ∀ prices x →
+    valuation prices (x P.⁻¹ᵀ) ≡ ℤ.-_ (valuation prices x)
+  valuation-inverse prices x = ≡-trans
+    (dot-congʳ prices (toℤᵛ-inverse x))
+    (dot-negʳ prices (toℤᵛ x))
+
+  valuation-fromℤᵛ : ∀ prices position →
+    valuation prices (fromℤᵛ position) ≡ dot prices position
+  valuation-fromℤᵛ prices position = dot-congʳ prices (toℤᵛ-fromℤᵛ position)
+
+  module ValuationGroup (prices : IntVector) = Morphism.GroupMorphisms
+    (AbelianGroup.rawGroup P.PacioliGroup)
+    (AbelianGroup.rawGroup ℤ.+-0-abelianGroup)
+
+  isValuationGroupHomomorphism :
+    ∀ prices → ValuationGroup.IsGroupHomomorphism prices (valuation prices)
+  isValuationGroupHomomorphism prices = record
+    { isMonoidHomomorphism = record
+      { isMagmaHomomorphism = record
+        { isRelHomomorphism = record { cong = λ {x} {y} → valuation-cong prices x y }
+        ; homo = valuation-homo prices
+        }
+      ; ε-homo = valuation-ε prices
+      }
+    ; ⁻¹-homo = valuation-inverse prices
+    }
+
 ------------------------------------------------------------------------
 -- Accounting: rows, the trial balance, and balanced transactions
 --
