@@ -616,6 +616,111 @@ module NonNegativeVectors (m : ℕ) where
   +-cancelˡ : Def.LeftCancellative _≡_ _+_
   +-cancelˡ = +-cancelˡ′
 
+module VectorIntegerReading (m : ℕ) where
+
+  module N = NonNegativeVectors m
+  module P = Pacioli N.Amounts N.+-cancelˡ
+  module S = ScalarIntegerReading
+
+  T : Set
+  T = DebitCredit N.Amount
+
+  IntVector : Set
+  IntVector = Vector ℤ.ℤ m
+
+  IntVectorGroup : AbelianGroup 0ℓ 0ℓ
+  IntVectorGroup = Pointwise.abelianGroup (Fin m) ℤ.+-0-abelianGroup
+
+  toℤᵛ : T → IntVector
+  toℤᵛ (a // b) i = S.toℤ (Vec.lookup a i // Vec.lookup b i)
+
+  toℤᵛ-cong : ∀ x y → x P.≈ᵀ y → ∀ i → toℤᵛ x i ≡ toℤᵛ y i
+  toℤᵛ-cong (a // b) (c // d) p i = S.toℤ-cong
+    (Vec.lookup a i // Vec.lookup b i)
+    (Vec.lookup c i // Vec.lookup d i)
+    (≡-trans
+      (≡-sym (Vecₚ.lookup-zipWith ℕ._+_ i a d))
+      (≡-trans
+        (cong (λ xs → Vec.lookup xs i) p)
+        (Vecₚ.lookup-zipWith ℕ._+_ i c b)))
+
+  toℤᵛ-homo : ∀ x y → ∀ i → toℤᵛ (x P.∙ᵀ y) i ≡ toℤᵛ x i ℤ.+ toℤᵛ y i
+  toℤᵛ-homo (a // b) (c // d) i = ≡-trans
+    (cong₂ (λ x y → S.toℤ (x // y))
+      (Vecₚ.lookup-zipWith ℕ._+_ i a c)
+      (Vecₚ.lookup-zipWith ℕ._+_ i b d))
+    (S.toℤ-homo (Vec.lookup a i // Vec.lookup b i)
+                 (Vec.lookup c i // Vec.lookup d i))
+
+  toℤᵛ-ε : ∀ i → toℤᵛ P.εᵀ i ≡ ℤ.0ℤ
+  toℤᵛ-ε i = ≡-trans
+    (cong₂ (λ x y → S.toℤ (x // y))
+      (Vecₚ.lookup-replicate i 0)
+      (Vecₚ.lookup-replicate i 0))
+    S.toℤ-ε
+
+  toℤᵛ-inverse : ∀ x → ∀ i → toℤᵛ (x P.⁻¹ᵀ) i ≡ ℤ.-_ (toℤᵛ x i)
+  toℤᵛ-inverse (a // b) i = S.toℤ-inverse (Vec.lookup a i // Vec.lookup b i)
+
+  module ToℤᵛGroup = Morphism.GroupMorphisms
+    (AbelianGroup.rawGroup P.PacioliGroup)
+    (AbelianGroup.rawGroup IntVectorGroup)
+
+  isToℤᵛGroupHomomorphism : ToℤᵛGroup.IsGroupHomomorphism toℤᵛ
+  isToℤᵛGroupHomomorphism = record
+    { isMonoidHomomorphism = record
+      { isMagmaHomomorphism = record
+        { isRelHomomorphism = record { cong = λ {x} {y} → toℤᵛ-cong x y }
+        ; homo = toℤᵛ-homo
+        }
+      ; ε-homo = toℤᵛ-ε
+      }
+    ; ⁻¹-homo = toℤᵛ-inverse
+    }
+
+  fromℤᵛ : IntVector → T
+  fromℤᵛ v =
+    Vec.tabulate (λ i → debit (S.fromℤ (v i))) //
+    Vec.tabulate (λ i → credit (S.fromℤ (v i)))
+
+  toℤᵛ-fromℤᵛ : ∀ v i → toℤᵛ (fromℤᵛ v) i ≡ v i
+  toℤᵛ-fromℤᵛ v i = ≡-trans
+    (cong₂ (λ x y → S.toℤ (x // y))
+      (Vecₚ.lookup∘tabulate (λ j → debit (S.fromℤ (v j))) i)
+      (Vecₚ.lookup∘tabulate (λ j → credit (S.fromℤ (v j))) i))
+    (S.toℤ-fromℤ (v i))
+
+  lookup-ext : ∀ {xs ys : Vec ℕ m} →
+    (∀ i → Vec.lookup xs i ≡ Vec.lookup ys i) → xs ≡ ys
+  lookup-ext {xs = xs} {ys = ys} p = ≡-trans
+    (≡-sym (Vecₚ.tabulate∘lookup xs))
+    (≡-trans (Vecₚ.tabulate-cong p) (Vecₚ.tabulate∘lookup ys))
+
+  toℤᵛ-injective : ∀ x y → (∀ i → toℤᵛ x i ≡ toℤᵛ y i) → x P.≈ᵀ y
+  toℤᵛ-injective (a // b) (c // d) p = lookup-ext λ i → ≡-trans
+    (Vecₚ.lookup-zipWith ℕ._+_ i a d)
+    (≡-trans
+      (S.toℤ-injective
+        (Vec.lookup a i // Vec.lookup b i)
+        (Vec.lookup c i // Vec.lookup d i)
+        (p i))
+      (≡-sym (Vecₚ.lookup-zipWith ℕ._+_ i c b)))
+
+  toℤᵛ-surjective :
+    ∀ v → Σ[ x ∈ T ] (∀ {z} → z P.≈ᵀ x → ∀ i → toℤᵛ z i ≡ v i)
+  toℤᵛ-surjective v = fromℤᵛ v , λ {z} z≈fromℤᵛv i → ≡-trans
+    (toℤᵛ-cong z (fromℤᵛ v) z≈fromℤᵛv i)
+    (toℤᵛ-fromℤᵛ v i)
+
+  isToℤᵛGroupIsomorphism : ToℤᵛGroup.IsGroupIsomorphism toℤᵛ
+  isToℤᵛGroupIsomorphism = record
+    { isGroupMonomorphism = record
+      { isGroupHomomorphism = isToℤᵛGroupHomomorphism
+      ; injective = λ {x} {y} → toℤᵛ-injective x y
+      }
+    ; surjective = toℤᵛ-surjective
+    }
+
 ------------------------------------------------------------------------
 -- Accounting: rows, the trial balance, and balanced transactions
 --
