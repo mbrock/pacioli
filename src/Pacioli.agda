@@ -591,6 +591,43 @@ module RingBuffer (N : ℕ) where
   dequeuePosting : T
   dequeuePosting = 0 // 1
 
+  accountEmpty : account emptyState ≈ᵀ εᵀ
+  accountEmpty = ≡-refl
+
+  private
+    +-oneʳ : ∀ n → n ℕ.+ 1 ≡ ℕ.suc n
+    +-oneʳ n = ≡-trans (ℕ.+-suc n 0) (cong ℕ.suc (ℕ.+-identityʳ n))
+
+  enqueuePosts : ∀ s room → account (enqueue s room) ≈ᵀ account s ∙ᵀ enqueuePosting
+  enqueuePosts s _ =
+    let h = head s
+        t = tail s
+    in ≡-trans
+      (cong (λ x → ℕ.suc h ℕ.+ x) (ℕ.+-identityʳ t))
+      (cong (λ x → x ℕ.+ t) (≡-sym (+-oneʳ h)))
+
+  dequeuePosts : ∀ s item → account (dequeue s item) ≈ᵀ account s ∙ᵀ dequeuePosting
+  dequeuePosts s _ =
+    let h = head s
+        t = tail s
+    in ≡-trans
+      (cong (λ x → h ℕ.+ x) (+-oneʳ t))
+      (cong (λ x → x ℕ.+ ℕ.suc t) (≡-sym (ℕ.+-identityʳ h)))
+
+  balanceSheet : ∀ s → Safe s → Occupancy s ℕ.+ Free s ≡ N
+  balanceSheet s ok =
+    let h = head s
+        t = tail s
+        o = Occupancy s
+        o≤N = ℕ.m≤n+o⇒m∸n≤o h t (noOverflow ok)
+        t+o≡h = ≡-trans (ℕ.+-comm t o) (ℕ.m∸n+n≡m (noUnderflow ok))
+        free≡N∸o = ≡-trans
+          (cong (λ x → (t ℕ.+ N) ℕ.∸ x) (≡-sym t+o≡h))
+          (ℕ.[m+n]∸[m+o]≡n∸o t N o)
+    in ≡-trans
+      (cong (λ x → o ℕ.+ x) free≡N∸o)
+      (ℕ.m+[n∸m]≡n o≤N)
+
   ----------------------------------------------------------------------
   -- Verified layer: the same guard propositions drive the typed API.
 
