@@ -251,17 +251,14 @@ module Pacioli
     }
 
   PacioliGroup : AbelianGroup c ℓ
-  PacioliGroup = record { isAbelianGroup = isPacioliGroup }
-
-  -- The canonical inclusion of amounts as debit-balance accounts,
-  -- a ↦ [ a // ε ]. This is the unit of the group-of-differences
-  -- construction: the universal monoid homomorphism from Amounts into
-  -- an abelian group. (Decoding an account [ a // b ] back to a signed
-  -- "balance" is then a ∙ᵀ-difference inside this group, i.e. the
-  -- debit isomorphism a // b ↦ a − b once a genuine group of values is
-  -- in hand. For ℕ-vectors that target group is ℤ-vectors.)
-  ι : Carrier → DebitCredit Carrier
-  ι a = a // ε
+  PacioliGroup = record
+    { Carrier = DebitCredit Carrier
+    ; _≈_ = _≈ᵀ_
+    ; _∙_ = _∙ᵀ_
+    ; ε = εᵀ
+    ; _⁻¹ = _⁻¹ᵀ
+    ; isAbelianGroup = isPacioliGroup
+    }
 
 ------------------------------------------------------------------------
 -- The non-negative n-vectors as a cancellative commutative monoid
@@ -293,13 +290,18 @@ module NonNegativeVectors (m : ℕ) where
         { isMonoid = record
           { isSemigroup = record
             { isMagma = record
-              { isEquivalence = record { refl = ≡-refl ; sym = ≡-sym ; trans = ≡-trans }
+              { isEquivalence = record
+                { refl = ≡-refl
+                ; sym = ≡-sym
+                ; trans = ≡-trans
+                }
               ; ∙-cong = cong₂ _+_
               }
             ; assoc = Vecₚ.zipWith-assoc ℕ.+-assoc
             }
-          ; identity = Vecₚ.zipWith-identityˡ ℕ.+-identityˡ
-                     , Vecₚ.zipWith-identityʳ ℕ.+-identityʳ
+          ; identity =
+              Vecₚ.zipWith-identityˡ ℕ.+-identityˡ
+            , Vecₚ.zipWith-identityʳ ℕ.+-identityʳ
           }
         ; comm = Vecₚ.zipWith-comm ℕ.+-comm
         }
@@ -316,13 +318,6 @@ module NonNegativeVectors (m : ℕ) where
 
   +-cancelˡ : Def.LeftCancellative _≡_ _+_
   +-cancelˡ = +-cancelˡ′
-
-  -- NOTE on representation. Using Data.Vec keeps amount literals
-  -- readable as `1 ∷ 0 ∷ []`, which matters for worked examples. If you
-  -- prefer the algebra to fall out for free, switch Amount to
-  -- Data.Vec.Functional (= Fin m → ℕ) and replace this whole record
-  -- with `Algebra.Construct.Pointwise.commutativeMonoid ℕ.+-0-commutativeMonoid`,
-  -- supplying only a one-line pointwise cancellation proof.
 
 ------------------------------------------------------------------------
 -- Accounting: ledgers, journals, transactions and the trial balance
@@ -378,7 +373,7 @@ module Accounting (m n : ℕ) where
 
   -- The empty transaction balances trivially (εᵀ ≈ᵀ εᵀ).
   empty : Tx
-  empty = [] , refl
+  empty = [] , P.≈ᵀ-refl {εᵀ}
 
   -- total is a monoid homomorphism from list-append to ∙ᵀ. This is the
   -- algebra of "posting the journal to the ledger": the running total of
